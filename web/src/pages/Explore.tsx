@@ -17,23 +17,22 @@ const Explore = () => {
   // Build filter using unified hook (no creator scoping for Explore)
   const memoFilter = useMemoFilters({
     includeShortcuts: false,
-    includePinned: false,
+    includePinned: true,
     visibilities,
   });
 
-  // Get sorting logic using unified hook (no pinned sorting)
+  // Get sorting logic using unified hook
   const { listSort, orderBy } = useMemoSorting({
-    pinnedFirst: false,
+    pinnedFirst: true,
     state: State.NORMAL,
   });
 
   return (
     <PagedMemoList
-      renderer={(memo: Memo) => <MemoView key={`${memo.name}-${memo.updateTime}`} memo={memo} showCreator showVisibility compact />}
+      renderer={(memo: Memo) => <MemoView key={`${memo.name}-${memo.updateTime}`} memo={memo} showVisibility compact />}
       listSort={listSort}
       orderBy={orderBy}
       filter={memoFilter}
-      showCreator
     />
   );
 };
