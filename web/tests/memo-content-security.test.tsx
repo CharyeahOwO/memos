@@ -7,16 +7,8 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
-import { SANITIZE_SCHEMA, isTrustedIframeSrc } from "@/components/MemoContent/constants";
-
-type IframeProps = React.ComponentProps<"iframe">;
-
-const TrustedIframe = (props: IframeProps) => {
-  if (typeof props.src !== "string" || !isTrustedIframeSrc(props.src)) {
-    return null;
-  }
-  return <iframe {...props} />;
-};
+import { allowAnyUrlTransform, isTrustedIframeSrc, SANITIZE_SCHEMA } from "@/components/MemoContent/constants";
+import { TrustedIframe } from "@/components/MemoContent/TrustedIframe";
 
 const renderMemoContent = (content: string): string =>
   renderToStaticMarkup(
@@ -24,6 +16,7 @@ const renderMemoContent = (content: string): string =>
       remarkPlugins={[remarkMath]}
       rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], [rehypeKatex, { throwOnError: false, strict: false }]]}
       components={{ iframe: TrustedIframe }}
+      urlTransform={allowAnyUrlTransform}
     >
       {content}
     </ReactMarkdown>,
@@ -63,25 +56,23 @@ describe("memo content sanitization", () => {
 });
 
 describe("trusted iframe providers", () => {
-  it("accepts trusted providers only", () => {
+  it("accepts any non-empty iframe src", () => {
     expect(isTrustedIframeSrc("https://www.youtube.com/embed/abc123")).toBe(true);
-    expect(isTrustedIframeSrc("https://www.youtube-nocookie.com/embed/abc123?si=test")).toBe(true);
-    expect(isTrustedIframeSrc("https://player.vimeo.com/video/123456")).toBe(true);
-    expect(isTrustedIframeSrc("https://open.spotify.com/embed/track/123456")).toBe(true);
-    expect(isTrustedIframeSrc("https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/123456")).toBe(true);
-    expect(isTrustedIframeSrc("https://www.loom.com/embed/123456")).toBe(true);
-    expect(isTrustedIframeSrc("https://www.google.com/maps/embed?pb=test")).toBe(true);
-    expect(isTrustedIframeSrc("https://app.diagrams.net/?embed=1")).toBe(true);
-    expect(isTrustedIframeSrc("https://www.draw.io/?embed=1")).toBe(true);
-    expect(isTrustedIframeSrc("https://evil.example/embed/abc123")).toBe(false);
+    expect(isTrustedIframeSrc("https://i.y.qq.com/n2/m/outchain/player/index.html?songid=374312821&songtype=0")).toBe(true);
+    expect(isTrustedIframeSrc("http://example.test/embed/abc123")).toBe(true);
+    expect(isTrustedIframeSrc("javascript:alert(1)")).toBe(true);
+    expect(isTrustedIframeSrc("")).toBe(false);
   });
 
-  it("drops untrusted iframe embeds during rendering", () => {
-    const trusted = renderMemoContent('<iframe src="https://www.youtube.com/embed/abc123" title="demo"></iframe>');
-    const untrusted = renderMemoContent('<iframe src="https://evil.example/embed/abc123" title="demo"></iframe>');
+  it("renders iframe embeds from arbitrary providers and protocols", () => {
+    const qqMusic = renderMemoContent(
+      '<iframe src="https://i.y.qq.com/n2/m/outchain/player/index.html?songid=374312821&amp;songtype=0" title="demo"></iframe>',
+    );
+    const javascriptUrl = renderMemoContent('<iframe src="javascript:alert(1)" title="demo"></iframe>');
 
-    expect(trusted).toMatch(/<iframe/);
-    expect(trusted).toMatch(/youtube\.com\/embed\/abc123/);
-    expect(untrusted).not.toMatch(/<iframe/);
+    expect(qqMusic).toMatch(/<iframe/);
+    expect(qqMusic).toMatch(/i\.y\.qq\.com\/n2\/m\/outchain\/player\/index\.html/);
+    expect(javascriptUrl).toMatch(/<iframe/);
+    expect(javascriptUrl).toMatch(/javascript:alert\(1\)/);
   });
 });

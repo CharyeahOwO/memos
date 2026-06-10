@@ -16,7 +16,7 @@ import { remarkPreserveType } from "@/utils/remark-plugins/remark-preserve-type"
 import { remarkSplitMixedTaskLists } from "@/utils/remark-plugins/remark-split-mixed-task-lists";
 import { remarkTag } from "@/utils/remark-plugins/remark-tag";
 import { CodeBlock } from "./CodeBlock";
-import { SANITIZE_SCHEMA } from "./constants";
+import { allowAnyUrlTransform, SANITIZE_SCHEMA } from "./constants";
 import { MarkdownRenderContext, rootMarkdownRenderContext } from "./MarkdownRenderContext";
 import { Mention } from "./Mention";
 import { Blockquote, Heading, HorizontalRule, Image, InlineCode, Link, List, ListItem, Paragraph } from "./markdown";
@@ -140,6 +140,7 @@ export const MemoMarkdownRenderer = ({ content, resolvedMentionUsernames }: Memo
           [rehypeKatex, { throwOnError: false, strict: false }],
         ]}
         components={markdownComponents}
+        urlTransform={allowAnyUrlTransform}
       >
         {content}
       </ReactMarkdown>
