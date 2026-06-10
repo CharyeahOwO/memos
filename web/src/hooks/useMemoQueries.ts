@@ -16,13 +16,14 @@ export const memoKeys = {
   comments: (name: string) => [...memoKeys.all, "comments", name] as const,
 };
 
-export function useMemos(request: Partial<ListMemosRequest> = {}) {
+export function useMemos(request: Partial<ListMemosRequest> = {}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: memoKeys.list(request),
     queryFn: async () => {
       const response = await memoServiceClient.listMemos(create(ListMemosRequestSchema, request as Record<string, unknown>));
       return response;
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

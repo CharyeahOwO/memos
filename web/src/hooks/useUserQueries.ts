@@ -12,6 +12,7 @@ export const userKeys = {
   detail: (name: string) => [...userKeys.details(), name] as const,
   stats: () => [...userKeys.all, "stats"] as const,
   userStats: (name: string) => [...userKeys.stats(), name] as const,
+  allStats: () => [...userKeys.stats(), "all"] as const,
   currentUser: () => [...userKeys.all, "current"] as const,
   shortcuts: () => [...userKeys.all, "shortcuts"] as const,
   notifications: () => [...userKeys.all, "notifications"] as const,
@@ -55,6 +56,17 @@ export function useUserStats(username?: string) {
       return stats;
     },
     enabled: !!username,
+  });
+}
+
+export function useAllUserStats(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: userKeys.allStats(),
+    queryFn: async () => {
+      const { stats } = await userServiceClient.listAllUserStats({});
+      return stats;
+    },
+    enabled: options?.enabled ?? true,
   });
 }
 
