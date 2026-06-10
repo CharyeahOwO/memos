@@ -66,7 +66,7 @@ export const useTranslate = (): TypedT => {
   return t;
 };
 
-export const isValidateLocale = (locale: string | undefined | null): boolean => {
+export const isValidLocale = (locale: string | undefined | null): boolean => {
   if (!locale) return false;
   return locales.includes(locale);
 };
@@ -77,7 +77,7 @@ export const isValidateLocale = (locale: string | undefined | null): boolean => 
 // 3. Browser language preference
 export const getLocaleWithFallback = (userLocale?: string): Locale => {
   // Priority 1: User setting (if logged in and valid)
-  if (userLocale && isValidateLocale(userLocale)) {
+  if (userLocale && isValidLocale(userLocale)) {
     return userLocale as Locale;
   }
 
@@ -93,9 +93,10 @@ export const getLocaleWithFallback = (userLocale?: string): Locale => {
 
 // Applies and persists a locale setting
 export const loadLocale = (locale: string): Locale => {
-  const validLocale = isValidateLocale(locale) ? (locale as Locale) : findNearestMatchedLanguage(navigator.language);
+  const validLocale = isValidLocale(locale) ? (locale as Locale) : findNearestMatchedLanguage(navigator.language);
   setStoredLocale(validLocale);
   i18n.changeLanguage(validLocale);
+  document.documentElement.lang = validLocale;
   return validLocale;
 };
 
@@ -120,4 +121,37 @@ export const getLocaleDisplayName = (locale: string): string => {
     // Intl.DisplayNames might not be available or might fail for some locales
   }
   return locale;
+};
+
+export const normalizeLocaleSearchText = (value: string): string => {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+};
+
+const getLocaleDisplayNameForLanguage = (locale: string, displayLanguage: string): string => {
+  try {
+    return new Intl.DisplayNames([displayLanguage], { type: "language" }).of(locale) ?? locale;
+  } catch {
+    return locale;
+  }
+};
+
+export const getLocaleSearchLabels = (locale: string, uiLocale: string): string[] => {
+  return Array.from(
+    new Set([
+      locale,
+      getLocaleDisplayNameForLanguage(locale, locale),
+      getLocaleDisplayNameForLanguage(locale, "en"),
+      getLocaleDisplayNameForLanguage(locale, uiLocale),
+    ]),
+  );
+};
+
+export const localeMatchesSearch = (locale: string, query: string, uiLocale: string): boolean => {
+  const normalizedQuery = normalizeLocaleSearchText(query.trim());
+  if (!normalizedQuery) return true;
+
+  return getLocaleSearchLabels(locale, uiLocale).some((label) => normalizeLocaleSearchText(label).includes(normalizedQuery));
 };

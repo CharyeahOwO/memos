@@ -1,41 +1,52 @@
 import { clearAccessToken } from "@/auth-state";
-import { getInstanceConfig } from "@/instance-config";
 import { ROUTES } from "@/router/routes";
+import { buildAuthRoute, isPublicRoute } from "./redirect-safety";
 
-const PUBLIC_ROUTES = [
-  ROUTES.AUTH, // Authentication pages
-  ROUTES.EXPLORE, // Explore page
-  "/u/", // User profile pages (dynamic)
-  "/memos/", // Individual memo detail pages (dynamic)
-] as const;
+// Re-export the pure helpers so existing call sites (`@/utils/auth-redirect`)
+// keep working without every caller switching to the new module. The side-effectful
+// `redirectOnAuthFailure` lives here; pure logic lives in `./redirect-safety`.
+export {
+  AUTH_REASON_PARAM,
+  AUTH_REASON_PROTECTED_MEMO,
+  AUTH_REDIRECT_PARAM,
+  buildAuthRoute,
+  getSafeRedirectPath,
+  isPublicRoute,
+} from "./redirect-safety";
 
-const PRIVATE_ROUTES = [ROUTES.ROOT, ROUTES.ATTACHMENTS, ROUTES.INBOX, ROUTES.ARCHIVED, ROUTES.SETTING] as const;
-
-function isPublicRoute(path: string): boolean {
-  return PUBLIC_ROUTES.some((route) => path.startsWith(route));
-}
-
-function isPrivateRoute(path: string): boolean {
-  return PRIVATE_ROUTES.includes(path as (typeof PRIVATE_ROUTES)[number]);
-}
-
-export function redirectOnAuthFailure(): void {
+/**
+ * Imperatively redirects the current document to the auth entry page, preserving
+ * the current URL as the `redirect` target. Intended for hard-fail auth paths
+ * (e.g. a refresh-token request returning 401 from a non-React context).
+ *
+ * No-ops when the user is already on an auth page or on a public page that
+ * does not require authentication, unless `forceRedirect` is set.
+ */
+export function redirectOnAuthFailure(
+  forceRedirect = false,
+  options?: {
+    redirect?: string | null;
+    reason?: string | null;
+  },
+): void {
   const currentPath = window.location.pathname;
+  const currentRedirectPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
-  // Don't redirect if it's a public route
-  if (isPublicRoute(currentPath)) {
+  // Already on auth page, nothing to do.
+  if (currentPath.startsWith(ROUTES.AUTH)) {
     return;
   }
 
-  const disallowPublicVisibility = getInstanceConfig().memoRelatedSetting.disallowPublicVisibility;
-  const target = disallowPublicVisibility ? ROUTES.AUTH : ROUTES.EXPLORE;
-
-  // Only redirect if it's a private route or disallowPublicVisibility is enabled
-  if (disallowPublicVisibility || isPrivateRoute(currentPath)) {
-    // Clear access token to ensure user is fully logged out
-    // This prevents the issue where user appears logged in but sees only public memos
-    // See: https://github.com/usememos/memos/issues/5565
-    clearAccessToken();
-    window.location.replace(target);
+  // Don't redirect if it's a public route (unless forced, e.g. public visibility is disallowed).
+  if (!forceRedirect && isPublicRoute(currentPath)) {
+    return;
   }
+
+  clearAccessToken();
+  window.location.replace(
+    buildAuthRoute({
+      ...options,
+      redirect: options?.redirect ?? currentRedirectPath,
+    }),
+  );
 }

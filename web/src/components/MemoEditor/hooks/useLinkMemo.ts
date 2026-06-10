@@ -1,11 +1,17 @@
 import { create } from "@bufbuild/protobuf";
-import { useState } from "react";
-import useDebounce from "react-use/lib/useDebounce";
+import { useEffect, useMemo, useState } from "react";
 import { memoServiceClient } from "@/connect";
 import { DEFAULT_LIST_MEMOS_PAGE_SIZE } from "@/helpers/consts";
-import { extractUserIdFromName } from "@/helpers/resource-names";
+import { buildMemoCreatorFilter } from "@/helpers/resource-names";
+import { useDebouncedEffect } from "@/hooks";
 import useCurrentUser from "@/hooks/useCurrentUser";
-import { Memo, MemoRelation, MemoRelation_MemoSchema, MemoRelation_Type, MemoRelationSchema } from "@/types/proto/api/v1/memo_service_pb";
+import {
+  type Memo,
+  type MemoRelation,
+  MemoRelation_MemoSchema,
+  MemoRelation_Type,
+  MemoRelationSchema,
+} from "@/types/proto/api/v1/memo_service_pb";
 
 interface UseLinkMemoParams {
   isOpen: boolean;
@@ -20,17 +26,29 @@ export const useLinkMemo = ({ isOpen, currentMemoName, existingRelations, onAddR
   const [isFetching, setIsFetching] = useState(true);
   const [fetchedMemos, setFetchedMemos] = useState<Memo[]>([]);
 
-  const filteredMemos = fetchedMemos.filter(
-    (memo) => memo.name !== currentMemoName && !existingRelations.some((relation) => relation.relatedMemo?.name === memo.name),
-  );
+  const filteredMemos = fetchedMemos.filter((memo) => memo.name !== currentMemoName);
 
-  useDebounce(
+  const linkedMemoNames = useMemo(() => new Set(existingRelations.map((r) => r.relatedMemo?.name)), [existingRelations]);
+
+  const isAlreadyLinked = (memoName: string): boolean => linkedMemoNames.has(memoName);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearchText("");
+    }
+  }, [isOpen]);
+
+  useDebouncedEffect(
     async () => {
       if (!isOpen) return;
 
       setIsFetching(true);
       try {
-        const conditions = [`creator_id == ${extractUserIdFromName(user?.name ?? "")}`];
+        const conditions: string[] = [];
+        const creatorFilter = buildMemoCreatorFilter(user?.name ?? "");
+        if (creatorFilter) {
+          conditions.push(creatorFilter);
+        }
         if (searchText) {
           conditions.push(`content.contains("${searchText}")`);
         }
@@ -66,5 +84,6 @@ export const useLinkMemo = ({ isOpen, currentMemoName, existingRelations, onAddR
     isFetching,
     filteredMemos,
     addMemoRelation,
+    isAlreadyLinked,
   };
 };

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,13 +15,13 @@ import (
 	"time"
 
 	"github.com/disintegration/imaging"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/usememos/memos/internal/motionphoto"
 	"github.com/usememos/memos/internal/profile"
-	"github.com/usememos/memos/internal/util"
-	"github.com/usememos/memos/plugin/storage/s3"
+	"github.com/usememos/memos/internal/storage/s3"
 	storepb "github.com/usememos/memos/proto/gen/store"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
@@ -31,8 +32,15 @@ const (
 	// ThumbnailCacheFolder is the folder name where thumbnail images are stored.
 	ThumbnailCacheFolder = ".thumbnail_cache"
 
+	// MotionCacheFolder is the folder name where extracted motion clips are stored.
+	MotionCacheFolder = ".motion_cache"
+
 	// thumbnailMaxSize is the maximum dimension (width or height) for thumbnails.
 	thumbnailMaxSize = 600
+
+	// thumbnailMetadataProbeSize is the maximum number of original image bytes inspected
+	// before thumbnail generation to detect metadata that the JPEG thumbnail pipeline cannot preserve.
+	thumbnailMetadataProbeSize = 1 << 20
 
 	// maxConcurrentThumbnails limits concurrent thumbnail generation to prevent memory exhaustion.
 	maxConcurrentThumbnails = 3
@@ -51,13 +59,13 @@ var xssUnsafeTypes = map[string]bool{
 	"text/xml":                 true,
 	"application/xml":          true,
 	"application/xhtml+xml":    true,
-	"image/svg+xml":            true,
 }
 
 // thumbnailSupportedTypes contains image MIME types that support thumbnail generation.
 var thumbnailSupportedTypes = map[string]bool{
 	"image/png":  true,
 	"image/jpeg": true,
+	"image/jpg":  true,
 	"image/heic": true,
 	"image/heif": true,
 	"image/webp": true,
@@ -78,10 +86,13 @@ var avatarAllowedTypes = map[string]bool{
 var SupportedThumbnailMimeTypes = []string{
 	"image/png",
 	"image/jpeg",
+	"image/jpg",
 	"image/heic",
 	"image/heif",
 	"image/webp",
 }
+
+var errUseOriginalForThumbnail = errors.New("serve original image instead of metadata-stripping thumbnail")
 
 // dataURIRegex parses data URI format: data:image/png;base64,iVBORw0KGgo...
 var dataURIRegex = regexp.MustCompile(`^data:(?P<type>[^;]+);base64,(?P<base64>.+)`)
@@ -118,17 +129,18 @@ func (s *FileServerService) RegisterRoutes(echoServer *echo.Echo) {
 // =============================================================================
 
 // serveAttachmentFile serves attachment binary content using native HTTP.
-func (s *FileServerService) serveAttachmentFile(c echo.Context) error {
+func (s *FileServerService) serveAttachmentFile(c *echo.Context) error {
 	ctx := c.Request().Context()
 	uid := c.Param("uid")
 	wantThumbnail := c.QueryParam("thumbnail") == "true"
+	wantMotion := c.QueryParam("motion") == "true"
 
 	attachment, err := s.Store.GetAttachment(ctx, &store.FindAttachment{
 		UID:     &uid,
 		GetBlob: true,
 	})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get attachment").SetInternal(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get attachment").Wrap(err)
 	}
 	if attachment == nil {
 		return echo.NewHTTPError(http.StatusNotFound, "attachment not found")
@@ -136,6 +148,10 @@ func (s *FileServerService) serveAttachmentFile(c echo.Context) error {
 
 	if err := s.checkAttachmentPermission(ctx, c, attachment); err != nil {
 		return err
+	}
+
+	if wantMotion {
+		return s.serveMotionClip(c, attachment)
 	}
 
 	contentType := s.sanitizeContentType(attachment.Type)
@@ -149,13 +165,13 @@ func (s *FileServerService) serveAttachmentFile(c echo.Context) error {
 }
 
 // serveUserAvatar serves user avatar images.
-func (s *FileServerService) serveUserAvatar(c echo.Context) error {
+func (s *FileServerService) serveUserAvatar(c *echo.Context) error {
 	ctx := c.Request().Context()
 	identifier := c.Param("identifier")
 
-	user, err := s.getUserByIdentifier(ctx, identifier)
+	user, err := s.getUserByUsername(ctx, identifier)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user").SetInternal(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user").Wrap(err)
 	}
 	if user == nil {
 		return echo.NewHTTPError(http.StatusNotFound, "user not found")
@@ -166,7 +182,7 @@ func (s *FileServerService) serveUserAvatar(c echo.Context) error {
 
 	imageType, imageData, err := s.parseDataURI(user.AvatarURL)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to parse avatar data").SetInternal(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to parse avatar data").Wrap(err)
 	}
 
 	if !avatarAllowedTypes[imageType] {
@@ -185,7 +201,7 @@ func (s *FileServerService) serveUserAvatar(c echo.Context) error {
 // =============================================================================
 
 // serveMediaStream serves video/audio files using streaming to avoid memory exhaustion.
-func (s *FileServerService) serveMediaStream(c echo.Context, attachment *store.Attachment, contentType string) error {
+func (s *FileServerService) serveMediaStream(c *echo.Context, attachment *store.Attachment, contentType string) error {
 	setSecurityHeaders(c)
 	setMediaHeaders(c, contentType, attachment.Type)
 
@@ -193,7 +209,7 @@ func (s *FileServerService) serveMediaStream(c echo.Context, attachment *store.A
 	case storepb.AttachmentStorageType_LOCAL:
 		filePath, err := s.resolveLocalPath(attachment.Reference)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to resolve file path").SetInternal(err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to resolve file path").Wrap(err)
 		}
 		http.ServeFile(c.Response(), c.Request(), filePath)
 		return nil
@@ -201,7 +217,7 @@ func (s *FileServerService) serveMediaStream(c echo.Context, attachment *store.A
 	case storepb.AttachmentStorageType_S3:
 		presignURL, err := s.getS3PresignedURL(c.Request().Context(), attachment)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate presigned URL").SetInternal(err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate presigned URL").Wrap(err)
 		}
 		return c.Redirect(http.StatusTemporaryRedirect, presignURL)
 
@@ -214,18 +230,17 @@ func (s *FileServerService) serveMediaStream(c echo.Context, attachment *store.A
 }
 
 // serveStaticFile serves non-streaming files (images, documents, etc.).
-func (s *FileServerService) serveStaticFile(c echo.Context, attachment *store.Attachment, contentType string, wantThumbnail bool) error {
-	blob, err := s.getAttachmentBlob(attachment)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get attachment blob").SetInternal(err)
-	}
-
+func (s *FileServerService) serveStaticFile(c *echo.Context, attachment *store.Attachment, contentType string, wantThumbnail bool) error {
 	// Generate thumbnail for supported image types.
 	if wantThumbnail && thumbnailSupportedTypes[attachment.Type] {
 		if thumbnailBlob, err := s.getOrGenerateThumbnail(c.Request().Context(), attachment); err != nil {
-			c.Logger().Warnf("failed to get thumbnail: %v", err)
+			if !errors.Is(err, errUseOriginalForThumbnail) {
+				slog.Warn("failed to get thumbnail", "error", err)
+			}
 		} else {
-			blob = thumbnailBlob
+			setSecurityHeaders(c)
+			setMediaHeaders(c, "image/jpeg", attachment.Type)
+			return c.Blob(http.StatusOK, "image/jpeg", thumbnailBlob)
 		}
 	}
 
@@ -237,7 +252,24 @@ func (s *FileServerService) serveStaticFile(c echo.Context, attachment *store.At
 		c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf("attachment; filename=%q", attachment.Filename))
 	}
 
-	return c.Blob(http.StatusOK, contentType, blob)
+	switch attachment.StorageType {
+	case storepb.AttachmentStorageType_LOCAL:
+		filePath, err := s.resolveLocalPath(attachment.Reference)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to resolve file path").Wrap(err)
+		}
+		http.ServeFile(c.Response(), c.Request(), filePath)
+		return nil
+	case storepb.AttachmentStorageType_S3:
+		reader, err := s.getAttachmentReader(c.Request().Context(), attachment)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get attachment reader").Wrap(err)
+		}
+		defer reader.Close()
+		return c.Stream(http.StatusOK, contentType, reader)
+	default:
+		return c.Blob(http.StatusOK, contentType, attachment.Blob)
+	}
 }
 
 // =============================================================================
@@ -251,7 +283,7 @@ func (s *FileServerService) getAttachmentBlob(attachment *store.Attachment) ([]b
 		return s.readLocalFile(attachment.Reference)
 
 	case storepb.AttachmentStorageType_S3:
-		return s.downloadFromS3(attachment)
+		return s.downloadFromS3(context.Background(), attachment)
 
 	default:
 		return attachment.Blob, nil
@@ -259,7 +291,7 @@ func (s *FileServerService) getAttachmentBlob(attachment *store.Attachment) ([]b
 }
 
 // getAttachmentReader returns a reader for streaming attachment content.
-func (s *FileServerService) getAttachmentReader(attachment *store.Attachment) (io.ReadCloser, error) {
+func (s *FileServerService) getAttachmentReader(ctx context.Context, attachment *store.Attachment) (io.ReadCloser, error) {
 	switch attachment.StorageType {
 	case storepb.AttachmentStorageType_LOCAL:
 		filePath, err := s.resolveLocalPath(attachment.Reference)
@@ -280,7 +312,7 @@ func (s *FileServerService) getAttachmentReader(attachment *store.Attachment) (i
 		if err != nil {
 			return nil, err
 		}
-		reader, err := s3Client.GetObjectStream(context.Background(), s3Object.Key)
+		reader, err := s3Client.GetObjectStream(ctx, s3Object.Key)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to stream from S3")
 		}
@@ -347,13 +379,13 @@ func (*FileServerService) createS3Client(attachment *store.Attachment) (*s3.Clie
 }
 
 // downloadFromS3 downloads the entire object from S3.
-func (s *FileServerService) downloadFromS3(attachment *store.Attachment) ([]byte, error) {
+func (s *FileServerService) downloadFromS3(ctx context.Context, attachment *store.Attachment) ([]byte, error) {
 	client, s3Object, err := s.createS3Client(attachment)
 	if err != nil {
 		return nil, err
 	}
 
-	blob, err := client.GetObject(context.Background(), s3Object.Key)
+	blob, err := client.GetObject(ctx, s3Object.Key)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to download from S3")
 	}
@@ -391,6 +423,14 @@ func (s *FileServerService) getOrGenerateThumbnail(ctx context.Context, attachme
 		return blob, nil
 	}
 
+	useOriginal, err := s.shouldUseOriginalForThumbnail(ctx, attachment)
+	if err != nil {
+		return nil, err
+	}
+	if useOriginal {
+		return nil, errUseOriginalForThumbnail
+	}
+
 	// Acquire semaphore to limit concurrent generation.
 	if err := s.thumbnailSemaphore.Acquire(ctx, 1); err != nil {
 		return nil, errors.Wrap(err, "failed to acquire semaphore")
@@ -402,7 +442,7 @@ func (s *FileServerService) getOrGenerateThumbnail(ctx context.Context, attachme
 		return blob, nil
 	}
 
-	return s.generateThumbnail(attachment, thumbnailPath)
+	return s.generateThumbnail(ctx, attachment, thumbnailPath)
 }
 
 // getThumbnailPath returns the file path for a cached thumbnail.
@@ -411,8 +451,74 @@ func (s *FileServerService) getThumbnailPath(attachment *store.Attachment) (stri
 	if err := os.MkdirAll(cacheFolder, os.ModePerm); err != nil {
 		return "", errors.Wrap(err, "failed to create thumbnail cache folder")
 	}
-	filename := fmt.Sprintf("%d%s", attachment.ID, filepath.Ext(attachment.Filename))
+	filename := fmt.Sprintf("%s.v2.jpeg", attachment.UID)
 	return filepath.Join(cacheFolder, filename), nil
+}
+
+func (s *FileServerService) shouldUseOriginalForThumbnail(ctx context.Context, attachment *store.Attachment) (bool, error) {
+	if attachment.Type == "image/heic" || attachment.Type == "image/heif" {
+		return true, nil
+	}
+
+	if attachment.Type != "image/jpeg" && attachment.Type != "image/jpg" && attachment.Type != "image/png" && attachment.Type != "image/webp" {
+		return false, nil
+	}
+
+	reader, err := s.getAttachmentReader(ctx, attachment)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to open image for metadata probe")
+	}
+	defer reader.Close()
+
+	probe, err := io.ReadAll(io.LimitReader(reader, thumbnailMetadataProbeSize))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read image metadata probe")
+	}
+
+	return hasThumbnailSensitiveMetadata(attachment.Type, probe), nil
+}
+
+func hasThumbnailSensitiveMetadata(mimeType string, data []byte) bool {
+	if mimeType == "image/heic" || mimeType == "image/heif" {
+		return true
+	}
+
+	for _, marker := range [][]byte{
+		[]byte("ICC_PROFILE"),
+		[]byte("iCCP"),
+		[]byte("ICCP"),
+		[]byte("cICP"),
+		[]byte("mDCv"),
+		[]byte("cLLi"),
+	} {
+		if bytes.Contains(data, marker) {
+			return true
+		}
+	}
+
+	lowerData := strings.ToLower(string(data))
+	for _, marker := range []string{
+		"hdrgm:",
+		"hdr gain map",
+		"hdrgainmap",
+		"gainmap",
+		"ultrahdr",
+		"adobe:hdrgainmap",
+		"aux:hdr",
+		"auxiliaryimagetype",
+		"display p3",
+		"display-p3",
+		"rec.2020",
+		"bt.2020",
+		"arib-std-b67",
+		"smpte st 2084",
+	} {
+		if strings.Contains(lowerData, marker) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // readCachedThumbnail reads a thumbnail from the cache directory.
@@ -426,8 +532,8 @@ func (*FileServerService) readCachedThumbnail(path string) ([]byte, error) {
 }
 
 // generateThumbnail creates a new thumbnail and saves it to disk.
-func (s *FileServerService) generateThumbnail(attachment *store.Attachment, thumbnailPath string) ([]byte, error) {
-	reader, err := s.getAttachmentReader(attachment)
+func (s *FileServerService) generateThumbnail(ctx context.Context, attachment *store.Attachment, thumbnailPath string) ([]byte, error) {
+	reader, err := s.getAttachmentReader(ctx, attachment)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get attachment reader")
 	}
@@ -443,7 +549,13 @@ func (s *FileServerService) generateThumbnail(attachment *store.Attachment, thum
 
 	thumbnailImage := imaging.Resize(img, thumbnailWidth, thumbnailHeight, imaging.Lanczos)
 
-	if err := imaging.Save(thumbnailImage, thumbnailPath); err != nil {
+	output, err := os.Create(thumbnailPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create thumbnail file")
+	}
+	defer output.Close()
+
+	if err := imaging.Encode(output, thumbnailImage, imaging.JPEG, imaging.JPEGQuality(90)); err != nil {
 		return nil, errors.Wrap(err, "failed to save thumbnail")
 	}
 
@@ -463,17 +575,71 @@ func calculateThumbnailDimensions(width, height int) (int, int) {
 	return 0, thumbnailMaxSize // Portrait: constrain height.
 }
 
+func (s *FileServerService) serveMotionClip(c *echo.Context, attachment *store.Attachment) error {
+	motionMedia := attachment.Payload.GetMotionMedia()
+	if motionMedia == nil || motionMedia.Family != storepb.MotionMediaFamily_ANDROID_MOTION_PHOTO || !motionMedia.HasEmbeddedVideo {
+		return echo.NewHTTPError(http.StatusBadRequest, "attachment does not have motion clip")
+	}
+
+	clipBlob, err := s.getOrExtractMotionClip(c.Request().Context(), attachment)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get motion clip").Wrap(err)
+	}
+
+	setSecurityHeaders(c)
+	setMediaHeaders(c, "video/mp4", "video/mp4")
+	modTime := time.Unix(attachment.UpdatedTs, 0)
+	http.ServeContent(c.Response(), c.Request(), attachment.UID+".mp4", modTime, bytes.NewReader(clipBlob))
+	return nil
+}
+
+func (s *FileServerService) getOrExtractMotionClip(_ context.Context, attachment *store.Attachment) ([]byte, error) {
+	motionPath, err := s.getMotionPath(attachment)
+	if err != nil {
+		return nil, err
+	}
+
+	if blob, err := s.readCachedThumbnail(motionPath); err == nil {
+		return blob, nil
+	}
+
+	blob, err := s.getAttachmentBlob(attachment)
+	if err != nil {
+		return nil, err
+	}
+
+	videoBlob, _ := motionphoto.ExtractVideo(blob)
+	if len(videoBlob) == 0 {
+		return nil, errors.New("motion video not found")
+	}
+
+	if err := os.WriteFile(motionPath, videoBlob, 0644); err != nil {
+		return nil, errors.Wrap(err, "failed to cache motion clip")
+	}
+
+	return videoBlob, nil
+}
+
+func (s *FileServerService) getMotionPath(attachment *store.Attachment) (string, error) {
+	cacheFolder := filepath.Join(s.Profile.Data, MotionCacheFolder)
+	if err := os.MkdirAll(cacheFolder, os.ModePerm); err != nil {
+		return "", errors.Wrap(err, "failed to create motion cache folder")
+	}
+
+	return filepath.Join(cacheFolder, attachment.UID+".mp4"), nil
+}
+
 // =============================================================================
 // Authentication & Authorization
 // =============================================================================
 
 // checkAttachmentPermission verifies the user has permission to access the attachment.
-func (s *FileServerService) checkAttachmentPermission(ctx context.Context, c echo.Context, attachment *store.Attachment) error {
+func (s *FileServerService) checkAttachmentPermission(ctx context.Context, c *echo.Context, attachment *store.Attachment) error {
 	// For unlinked attachments, only the creator can access.
 	if attachment.MemoID == nil {
 		user, err := s.getCurrentUser(ctx, c)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get current user").SetInternal(err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get current user").Wrap(err)
 		}
 		if user == nil {
 			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized access")
@@ -486,7 +652,7 @@ func (s *FileServerService) checkAttachmentPermission(ctx context.Context, c ech
 
 	memo, err := s.Store.GetMemo(ctx, &store.FindMemo{ID: attachment.MemoID})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to find memo").SetInternal(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to find memo").Wrap(err)
 	}
 	if memo == nil {
 		return echo.NewHTTPError(http.StatusNotFound, "memo not found")
@@ -496,9 +662,19 @@ func (s *FileServerService) checkAttachmentPermission(ctx context.Context, c ech
 		return nil
 	}
 
+	// Check share token fallback: allow access if request carries a valid, non-expired share token
+	// that was issued for this specific memo. This covers attachment requests made from the shared
+	// memo page for private or protected memos.
+	if shareToken := (*c).QueryParam("share_token"); shareToken != "" {
+		ms, err := s.Store.GetMemoShare(ctx, &store.FindMemoShare{UID: &shareToken})
+		if err == nil && ms != nil && !isMemoShareExpired(ms) && ms.MemoID == memo.ID {
+			return nil
+		}
+	}
+
 	user, err := s.getCurrentUser(ctx, c)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get current user").SetInternal(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get current user").Wrap(err)
 	}
 	if user == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized access")
@@ -513,66 +689,14 @@ func (s *FileServerService) checkAttachmentPermission(ctx context.Context, c ech
 
 // getCurrentUser retrieves the current authenticated user from the request.
 // Authentication priority: Bearer token (Access Token V2 or PAT) > Refresh token cookie.
-func (s *FileServerService) getCurrentUser(ctx context.Context, c echo.Context) (*store.User, error) {
-	// Try Bearer token authentication.
-	if authHeader := c.Request().Header.Get(echo.HeaderAuthorization); authHeader != "" {
-		if user, err := s.authenticateByBearerToken(ctx, authHeader); err == nil && user != nil {
-			return user, nil
-		}
-	}
-
-	// Fallback: Try refresh token cookie.
-	if cookieHeader := c.Request().Header.Get("Cookie"); cookieHeader != "" {
-		if user, err := s.authenticateByRefreshToken(ctx, cookieHeader); err == nil && user != nil {
-			return user, nil
-		}
-	}
-
-	return nil, nil
+func (s *FileServerService) getCurrentUser(ctx context.Context, c *echo.Context) (*store.User, error) {
+	authHeader := c.Request().Header.Get(echo.HeaderAuthorization)
+	cookieHeader := c.Request().Header.Get("Cookie")
+	return s.authenticator.AuthenticateToUser(ctx, authHeader, cookieHeader)
 }
 
-// authenticateByBearerToken authenticates using Authorization header.
-func (s *FileServerService) authenticateByBearerToken(ctx context.Context, authHeader string) (*store.User, error) {
-	token := auth.ExtractBearerToken(authHeader)
-	if token == "" {
-		return nil, nil
-	}
-
-	// Try Access Token V2 (stateless JWT).
-	if !strings.HasPrefix(token, auth.PersonalAccessTokenPrefix) {
-		claims, err := s.authenticator.AuthenticateByAccessTokenV2(token)
-		if err == nil && claims != nil {
-			return s.Store.GetUser(ctx, &store.FindUser{ID: &claims.UserID})
-		}
-	}
-
-	// Try Personal Access Token (stateful).
-	if strings.HasPrefix(token, auth.PersonalAccessTokenPrefix) {
-		user, _, err := s.authenticator.AuthenticateByPAT(ctx, token)
-		if err == nil {
-			return user, nil
-		}
-	}
-
-	return nil, nil
-}
-
-// authenticateByRefreshToken authenticates using refresh token cookie.
-func (s *FileServerService) authenticateByRefreshToken(ctx context.Context, cookieHeader string) (*store.User, error) {
-	refreshToken := auth.ExtractRefreshTokenFromCookie(cookieHeader)
-	if refreshToken == "" {
-		return nil, nil
-	}
-
-	user, _, err := s.authenticator.AuthenticateByRefreshToken(ctx, refreshToken)
-	return user, err
-}
-
-// getUserByIdentifier finds a user by either ID or username.
-func (s *FileServerService) getUserByIdentifier(ctx context.Context, identifier string) (*store.User, error) {
-	if userID, err := util.ConvertStringToInt32(identifier); err == nil {
-		return s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
-	}
+// getUserByUsername finds a user by username only.
+func (s *FileServerService) getUserByUsername(ctx context.Context, identifier string) (*store.User, error) {
 	return s.Store.GetUser(ctx, &store.FindUser{Username: &identifier})
 }
 
@@ -615,7 +739,7 @@ func isMediaType(mimeType string) bool {
 }
 
 // setSecurityHeaders sets common security headers for all responses.
-func setSecurityHeaders(c echo.Context) {
+func setSecurityHeaders(c *echo.Context) {
 	h := c.Response().Header()
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Frame-Options", "DENY")
@@ -623,7 +747,7 @@ func setSecurityHeaders(c echo.Context) {
 }
 
 // setMediaHeaders sets headers for media file responses.
-func setMediaHeaders(c echo.Context, contentType, originalType string) {
+func setMediaHeaders(c *echo.Context, contentType, originalType string) {
 	h := c.Response().Header()
 	h.Set(echo.HeaderContentType, contentType)
 	h.Set(echo.HeaderCacheControl, cacheMaxAge)
@@ -632,4 +756,9 @@ func setMediaHeaders(c echo.Context, contentType, originalType string) {
 	if strings.HasPrefix(originalType, "image/") || strings.HasPrefix(originalType, "video/") {
 		h.Set("Color-Gamut", "srgb, p3, rec2020")
 	}
+}
+
+// isMemoShareExpired returns true if the share has a defined expiry that has already passed.
+func isMemoShareExpired(ms *store.MemoShare) bool {
+	return ms.ExpiresTs != nil && time.Now().Unix() > *ms.ExpiresTs
 }

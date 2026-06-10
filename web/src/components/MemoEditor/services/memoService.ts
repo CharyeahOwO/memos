@@ -122,9 +122,8 @@ export const memoService = {
     return { memoName: memo.name, hasChanges: true };
   },
 
-  async load(memoName: string): Promise<EditorState> {
-    const memo = await memoServiceClient.getMemo({ name: memoName });
-
+  /** Build editor state from an already-loaded Memo entity (no network request). */
+  fromMemo(memo: Memo): EditorState {
     return {
       content: memo.content,
       metadata: {
@@ -135,12 +134,7 @@ export const memoService = {
       },
       ui: {
         isFocusMode: false,
-        isLoading: {
-          saving: false,
-          uploading: false,
-          loading: false,
-        },
-        isDragging: false,
+        isLoading: { saving: false, uploading: false, loading: false },
         isComposing: false,
       },
       timestamps: {
@@ -148,6 +142,13 @@ export const memoService = {
         updateTime: memo.updateTime ? timestampDate(memo.updateTime) : undefined,
       },
       localFiles: [],
+      audioRecorder: {
+        isSupported: true,
+        permission: "unknown",
+        status: "idle",
+        elapsedSeconds: 0,
+        error: undefined,
+      },
     };
   },
 };

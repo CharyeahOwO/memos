@@ -1,8 +1,38 @@
+<div align="center">
+  <p><b>Featured Sponsors</b></p>
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <a href="https://go.warp.dev/memos" target="_blank" rel="noopener">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/warpdotdev/brand-assets/refs/heads/main/Logos/Warp-Wordmark-White.png" />
+            <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/warpdotdev/brand-assets/refs/heads/main/Logos/Warp-Wordmark-Black.png" />
+            <img alt="Warp" height="44" src="https://raw.githubusercontent.com/warpdotdev/brand-assets/refs/heads/main/Logos/Warp-Wordmark-Black.png" />
+          </picture>
+          <br/>
+          <span>Warp is an agentic development environment.</span>
+        </a>
+      </td>
+      <td align="center" width="50%">
+        <a href="https://coderabbit.link/usememos" target="_blank" rel="noopener">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="https://victorious-bubble-f69a016683.media.strapiapp.com/White_Typemark_79b9189d19.svg" />
+            <source media="(prefers-color-scheme: light)" srcset="https://victorious-bubble-f69a016683.media.strapiapp.com/Orange_Typemark_43bf516c9d.svg" />
+            <img alt="CodeRabbit" height="44" src="https://victorious-bubble-f69a016683.media.strapiapp.com/Orange_Typemark_43bf516c9d.svg" />
+          </picture>
+          <br/>
+          <span>Cut code review time &amp; bugs in half, instantly.</span>
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
 # Memos
 
 <img align="right" height="96px" src="https://raw.githubusercontent.com/usememos/.github/refs/heads/main/assets/logo-rounded.png" alt="Memos" />
 
-An open-source, self-hosted note-taking service. Your thoughts, your data, your control — no tracking, no ads, no subscription fees.
+Open-source, self-hosted note-taking tool built for quick capture. Markdown-native, lightweight, and fully yours.
 
 [![Home](https://img.shields.io/badge/🏠-usememos.com-blue?style=flat-square)](https://usememos.com)
 [![Live Demo](https://img.shields.io/badge/✨-Try%20Demo-orange?style=flat-square)](https://demo.usememos.com/)
@@ -12,68 +42,12 @@ An open-source, self-hosted note-taking service. Your thoughts, your data, your 
 
 <img src="https://raw.githubusercontent.com/usememos/.github/refs/heads/main/assets/demo.png" alt="Memos Demo Screenshot" height="512" />
 
-### 💎 Featured Sponsors
-
-[**Warp** — The AI-powered terminal built for speed and collaboration](https://go.warp.dev/memos)
-
-<a href="https://go.warp.dev/memos" target="_blank" rel="noopener">
-  <img src="https://raw.githubusercontent.com/warpdotdev/brand-assets/main/Github/Sponsor/Warp-Github-LG-02.png" alt="Warp - The AI-powered terminal built for speed and collaboration" width="512" />
-</a>
-
----
-
-[**TestMu AI** - The world’s first full-stack Agentic AI Quality Engineering platform](https://www.testmu.ai/?utm_source=memos&utm_medium=sponsor)
-  
-<a href="https://www.testmu.ai/?utm_source=memos&utm_medium=sponsor" target="_blank" rel="noopener">
-  <img src="https://usememos.com/sponsors/testmu.svg" alt="TestMu AI" height="36" />
-</a>
-
-## Overview
-
-Memos is a privacy-first, self-hosted knowledge base that works seamlessly for personal notes, team wikis, and knowledge management. Built with Go and React, it offers lightning-fast performance without compromising on features or usability.
-
-**Why choose Memos over cloud services?**
-
-| Feature           | Memos                          | Cloud Services                |
-| ----------------- | ------------------------------ | ----------------------------- |
-| **Privacy**       | ✅ Self-hosted, zero telemetry | ❌ Your data on their servers |
-| **Cost**          | ✅ Free forever, MIT license   | ❌ Subscription fees          |
-| **Performance**   | ✅ Instant load, no latency    | ⚠️ Depends on internet        |
-| **Ownership**     | ✅ Full control & export       | ❌ Vendor lock-in             |
-| **API Access**    | ✅ Full REST + gRPC APIs       | ⚠️ Limited or paid            |
-| **Customization** | ✅ Open source, forkable       | ❌ Closed ecosystem           |
-
 ## Features
 
-- **🔒 Privacy-First Architecture**
-
-  - Self-hosted on your infrastructure with zero telemetry
-  - Complete data ownership and export capabilities
-  - No tracking, no ads, no vendor lock-in
-
-- **📝 Markdown Native**
-
-  - Full markdown support
-  - Plain text storage — take your data anywhere
-
-- **⚡ Blazing Fast**
-
-  - Built with Go backend and React frontend
-  - Optimized for performance at any scale
-
-- **🐳 Simple Deployment**
-
-  - One-line Docker installation
-  - Supports SQLite, MySQL, and PostgreSQL
-
-- **🔗 Developer-Friendly**
-
-  - Full REST and gRPC APIs
-  - Easy integration with existing workflows
-
-- **🎨 Beautiful Interface**
-  - Clean, minimal design and dark mode support
-  - Mobile-responsive layout
+- **Instant Capture** — Timeline-first UI. Open, write, done — no folders to navigate.
+- **Total Data Ownership** — Self-hosted on your infrastructure. Notes stored in Markdown, always portable. Zero telemetry.
+- **Radical Simplicity** — Single Go binary, ~20MB Docker image. One command to deploy with SQLite, MySQL, or PostgreSQL.
+- **Open & Extensible** — MIT-licensed with full REST and gRPC APIs for integration.
 
 ## Quick Start
 
@@ -88,6 +62,12 @@ docker run -d \
 ```
 
 Open `http://localhost:5230` and start writing!
+
+### Native Binary
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/usememos/memos/main/scripts/install.sh | sh
+```
 
 ### Try the Live Demo
 
@@ -104,17 +84,19 @@ See our [installation guide](https://usememos.com/docs/deploy) for detailed inst
 
 ## Contributing
 
-We welcome contributions of all kinds! Whether you're fixing bugs, adding features, improving documentation, or helping with translations — every contribution matters.
+Contributions are welcome — bug reports, feature suggestions, pull requests, documentation, and translations.
 
-**Ways to contribute:**
-
-- 🐛 [Report bugs](https://github.com/usememos/memos/issues/new?template=bug_report.md)
-- 💡 [Suggest features](https://github.com/usememos/memos/issues/new?template=feature_request.md)
-- 🔧 [Submit pull requests](https://github.com/usememos/memos/pulls)
-- 📖 [Improve documentation](https://github.com/usememos/memos/tree/main/docs)
-- 🌍 [Help with translations](https://github.com/usememos/memos/tree/main/web/src/locales)
+- [Report bugs](https://github.com/usememos/memos/issues/new?template=bug_report.md)
+- [Suggest features](https://github.com/usememos/memos/issues/new?template=feature_request.md)
+- [Submit pull requests](https://github.com/usememos/memos/pulls)
+- [Improve documentation](https://github.com/usememos/dotcom)
+- [Help with translations](https://github.com/usememos/memos/tree/main/web/src/locales)
 
 ## Sponsors
+* [**CodeRabbit** - Cut code review time & bugs in half, instantly](https://coderabbit.link/usememos)
+* [**Warp** - The agentic development environment](https://go.warp.dev/memos)
+* [**SSD Nodes** - Affordable VPS hosting for self-hosters](https://ssdnodes.com/?utm_source=memos&utm_medium=sponsor)
+* [**InstaPods** - Get your app online in seconds](https://instapods.com/?utm_source=memos&utm_medium=sponsor) • [Deploy Memos in 30 Seconds](https://instapods.com/apps/memos/?utm_source=memos&utm_medium=sponsor)
 
 Love Memos? [Sponsor us on GitHub](https://github.com/sponsors/usememos) to help keep the project growing!
 
@@ -124,11 +106,7 @@ Love Memos? [Sponsor us on GitHub](https://github.com/sponsors/usememos) to help
 
 ## License
 
-Memos is open-source software licensed under the [MIT License](LICENSE).
-
-## Privacy Policy
-
-Memos is built with privacy as a core principle. As a self-hosted application, all your data stays on your infrastructure. There is no telemetry, no tracking, and no data collection. See our [Privacy Policy](https://usememos.com/privacy) for details.
+Memos is open-source software licensed under the [MIT License](LICENSE). See our [Privacy Policy](https://usememos.com/privacy) for details on data handling.
 
 ---
 

@@ -1,29 +1,58 @@
-# temp folder
-tmp
+# Dependencies
+node_modules/
+web/node_modules/
+.pnpm-store/
 
-# Frontend asset
-web/dist
+# Frontend build and test output
+dist/
+web/dist/
+server/router/frontend/dist/
+coverage/
+web/coverage/
+playwright-report/
+web/playwright-report/
+test-results/
+web/test-results/
 
-# Build artifacts
+# Backend build output
 build/
 bin/
 memos
+memos.exe
+*.test
+*.prof
+*.pprof
 
-# Plan/design documents
-docs/plans/
+# Local runtime data
+tmp/
+temp/
+.tmp/
+.cache/
+.memos/
+memos-data/
+memos_data/
 
-.DS_Store
-
-# Jetbrains
-.idea
-
-# Docker Compose Environment File
+# Environment and secrets
 .env
+.env.*
+!.env.example
+!.env.sample
+*.local
 
-dist
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# VSCode settings
-.vscode
+# Editors and OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # Git worktrees
 .worktrees/

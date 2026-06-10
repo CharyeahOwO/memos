@@ -21,6 +21,11 @@ type FindUserSetting struct {
 	Key    storepb.UserSetting_Key
 }
 
+type DeleteUserSetting struct {
+	UserID *int32
+	Key    storepb.UserSetting_Key
+}
+
 // RefreshTokenQueryResult contains the result of querying a refresh token.
 type RefreshTokenQueryResult struct {
 	UserID       int32
@@ -100,6 +105,23 @@ func (s *Store) GetUserSetting(ctx context.Context, find *FindUserSetting) (*sto
 	userSetting := list[0]
 	s.userSettingCache.Set(ctx, getUserSettingCacheKey(userSetting.UserId, userSetting.Key.String()), userSetting)
 	return userSetting, nil
+}
+
+func (s *Store) DeleteUserSettings(ctx context.Context, delete *DeleteUserSetting) error {
+	existing, err := s.ListUserSettings(ctx, &FindUserSetting{
+		UserID: delete.UserID,
+		Key:    delete.Key,
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.driver.DeleteUserSettings(ctx, delete); err != nil {
+		return err
+	}
+	for _, setting := range existing {
+		s.userSettingCache.Delete(ctx, getUserSettingCacheKey(setting.UserId, setting.Key.String()))
+	}
+	return nil
 }
 
 // GetUserByPATHash finds a user by PAT hash.
@@ -413,6 +435,12 @@ func convertUserSettingFromRaw(raw *UserSetting) (*storepb.UserSetting, error) {
 			return nil, err
 		}
 		userSetting.Value = &storepb.UserSetting_General{General: generalUserSetting}
+	case storepb.UserSetting_TAGS:
+		tagsUserSetting := &storepb.TagsUserSetting{}
+		if err := protojsonUnmarshaler.Unmarshal([]byte(raw.Value), tagsUserSetting); err != nil {
+			return nil, errors.Wrap(err, "unmarshal tags user setting")
+		}
+		userSetting.Value = &storepb.UserSetting_Tags{Tags: tagsUserSetting}
 	case storepb.UserSetting_REFRESH_TOKENS:
 		refreshTokensUserSetting := &storepb.RefreshTokensUserSetting{}
 		if err := protojsonUnmarshaler.Unmarshal([]byte(raw.Value), refreshTokensUserSetting); err != nil {
@@ -456,6 +484,13 @@ func convertUserSettingToRaw(userSetting *storepb.UserSetting) (*UserSetting, er
 		value, err := protojson.Marshal(generalUserSetting)
 		if err != nil {
 			return nil, err
+		}
+		raw.Value = string(value)
+	case storepb.UserSetting_TAGS:
+		tagsUserSetting := userSetting.GetTags()
+		value, err := protojson.Marshal(tagsUserSetting)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal tags user setting")
 		}
 		raw.Value = string(value)
 	case storepb.UserSetting_REFRESH_TOKENS:

@@ -1,69 +1,60 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
-import { memoKeys } from "@/hooks/useMemoQueries";
-import type { Visibility } from "@/types/proto/api/v1/memo_service_pb";
+import { useEffect, useRef, useState } from "react";
+import type { Memo, Visibility } from "@/types/proto/api/v1/memo_service_pb";
 import type { EditorRefActions } from "../Editor";
 import { cacheService, memoService } from "../services";
 import { useEditorContext } from "../state";
 
-export const useMemoInit = (
-  editorRef: React.RefObject<EditorRefActions | null>,
-  memoName: string | undefined,
-  cacheKey: string | undefined,
-  username: string,
-  autoFocus?: boolean,
-  defaultVisibility?: Visibility,
-) => {
+interface UseMemoInitOptions {
+  editorRef: React.RefObject<EditorRefActions | null>;
+  memo?: Memo;
+  cacheKey?: string;
+  username: string;
+  autoFocus?: boolean;
+  defaultVisibility?: Visibility;
+  defaultCreateTime?: Date;
+}
+
+export const useMemoInit = ({
+  editorRef,
+  memo,
+  cacheKey,
+  username,
+  autoFocus,
+  defaultVisibility,
+  defaultCreateTime,
+}: UseMemoInitOptions) => {
   const { actions, dispatch } = useEditorContext();
-  const queryClient = useQueryClient();
   const initializedRef = useRef(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
+    const key = cacheService.key(username, cacheKey);
 
-    const init = async () => {
-      dispatch(actions.setLoading("loading", true));
-
-      try {
-        if (memoName) {
-          // Force refetch from server to prevent stale data issues
-          // See: https://github.com/usememos/memos/issues/5470
-          await queryClient.invalidateQueries({ queryKey: memoKeys.detail(memoName) });
-
-          // Load existing memo
-          const loadedState = await memoService.load(memoName);
-          dispatch(
-            actions.initMemo({
-              content: loadedState.content,
-              metadata: loadedState.metadata,
-              timestamps: loadedState.timestamps,
-            }),
-          );
-        } else {
-          // Load from cache for new memo
-          const cachedContent = cacheService.load(cacheService.key(username, cacheKey));
-          if (cachedContent) {
-            dispatch(actions.updateContent(cachedContent));
-          }
-          // Apply default visibility for new memos
-          if (defaultVisibility !== undefined) {
-            dispatch(actions.setMetadata({ visibility: defaultVisibility }));
-          }
-        }
-      } catch (error) {
-        console.error("Failed to initialize editor:", error);
-      } finally {
-        dispatch(actions.setLoading("loading", false));
-
-        if (autoFocus) {
-          setTimeout(() => {
-            editorRef.current?.focus();
-          }, 100);
-        }
+    if (memo) {
+      const initialState = memoService.fromMemo(memo);
+      cacheService.clear(key);
+      dispatch(actions.initMemo(initialState));
+    } else {
+      const cachedContent = cacheService.load(key);
+      if (cachedContent) {
+        dispatch(actions.updateContent(cachedContent));
       }
-    };
+      if (defaultVisibility !== undefined) {
+        dispatch(actions.setMetadata({ visibility: defaultVisibility }));
+      }
+      if (defaultCreateTime) {
+        dispatch(actions.setTimestamps({ createTime: defaultCreateTime, updateTime: defaultCreateTime }));
+      }
+    }
 
-    init();
-  }, [memoName, cacheKey, username, autoFocus, defaultVisibility, actions, dispatch, editorRef, queryClient]);
+    if (autoFocus) {
+      setTimeout(() => editorRef.current?.focus(), 100);
+    }
+
+    setIsInitialized(true);
+  }, [memo, cacheKey, username, autoFocus, defaultVisibility, defaultCreateTime, actions, dispatch, editorRef]);
+
+  return { isInitialized };
 };

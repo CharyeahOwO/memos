@@ -2,8 +2,11 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import dayjs from "dayjs";
 import { countBy } from "lodash-es";
 import { useMemo } from "react";
-import { useMemos } from "@/hooks/useMemoQueries";
+import type { MemoExplorerContext } from "@/components/MemoExplorer";
+import { type MemoTimeBasis, useView } from "@/contexts/ViewContext";
+import useCurrentUser from "@/hooks/useCurrentUser";
 import { useAllUserStats, useUserStats } from "@/hooks/useUserQueries";
+import { State } from "@/types/proto/api/v1/common_pb";
 import type { UserStats } from "@/types/proto/api/v1/user_service_pb";
 import type { StatisticsData } from "@/types/statistics";
 
@@ -15,85 +18,81 @@ export interface FilteredMemoStats {
 
 export interface UseFilteredMemoStatsOptions {
   userName?: string;
-  includeAllUsers?: boolean;
+  context?: MemoExplorerContext;
 }
 
-const aggregateUserStats = (statsList: UserStats[]) => {
-  const displayTimeList: Date[] = [];
-  const tagCount: Record<string, number> = {};
+const toDateString = (date: Date) => dayjs(date).format("YYYY-MM-DD");
 
-  for (const userStats of statsList) {
-    for (const timestamp of userStats.memoDisplayTimestamps) {
-      displayTimeList.push(timestampDate(timestamp));
-    }
-
-    for (const [tag, count] of Object.entries(userStats.tagCount)) {
-      tagCount[tag] = (tagCount[tag] || 0) + count;
-    }
+const timestampsForBasis = (stats: UserStats, basis: MemoTimeBasis) => {
+  const createdArray = stats.memoCreatedTimestamps ?? [];
+  const updatedArray = stats.memoUpdatedTimestamps ?? [];
+  const wantUpdated = basis === "update_time";
+  const oldServerFallback = wantUpdated && updatedArray.length === 0 && createdArray.length > 0;
+  if (oldServerFallback) {
+    console.warn("UserStats.memo_updated_timestamps not present; falling back to memo_created_timestamps");
   }
-
-  return {
-    activityStats: countBy(displayTimeList.map((date) => dayjs(date).format("YYYY-MM-DD"))),
-    tagCount,
-  };
+  return wantUpdated && !oldServerFallback ? updatedArray : createdArray;
 };
 
 export const useFilteredMemoStats = (options: UseFilteredMemoStatsOptions = {}): FilteredMemoStats => {
-  const { userName, includeAllUsers = false } = options;
+  const { userName, context } = options;
+  const currentUser = useCurrentUser();
+  const { timeBasis } = useView();
 
-  // Fetch user stats if userName is provided
+  // home/profile: use backend per-user stats (full tag set, not page-limited)
   const { data: userStats, isLoading: isLoadingUserStats } = useUserStats(userName);
-
-  // Fetch full public stats for Explore without relying on paginated memo lists
-  const { data: allUserStats, isLoading: isLoadingAllUserStats } = useAllUserStats({ enabled: includeAllUsers });
-
-  // Fetch memos for fallback computation (or when userName is not provided)
-  const { data: memosResponse, isLoading: isLoadingMemos } = useMemos({}, { enabled: !includeAllUsers && !userName });
+  // explore/archived: fetch backend grouped stats and aggregate them locally.
+  // ListAllUserStats AND's the request filter with the server's auth filter, so
+  // private memos are not included unless explicitly visible to the current user.
+  const exploreVisibilityFilter = currentUser != null ? 'visibility in ["PUBLIC", "PROTECTED"]' : 'visibility in ["PUBLIC"]';
+  const allUserStatsRequest =
+    context === "explore"
+      ? { state: State.NORMAL, filter: exploreVisibilityFilter }
+      : context === "archived"
+        ? { state: State.ARCHIVED }
+        : {};
+  const shouldFetchAllUserStats = context === "explore" || (context === "archived" && !!currentUser?.name);
+  const { data: allUserStats = [], isLoading: isLoadingAllUserStats } = useAllUserStats(allUserStatsRequest, {
+    enabled: shouldFetchAllUserStats,
+  });
 
   const data = useMemo(() => {
-    const loading = isLoadingUserStats || isLoadingAllUserStats || isLoadingMemos;
+    const loading = isLoadingUserStats || isLoadingAllUserStats;
     let activityStats: Record<string, number> = {};
     let tagCount: Record<string, number> = {};
 
-    // Use all-user backend stats for Explore so the calendar is not limited by list pagination.
-    if (includeAllUsers && allUserStats) {
-      const aggregatedStats = aggregateUserStats(allUserStats);
-      activityStats = aggregatedStats.activityStats;
-      tagCount = aggregatedStats.tagCount;
-    } else if (userName && userStats) {
-      // Try to use backend user stats if userName is provided and available.
-      const aggregatedStats = aggregateUserStats([userStats]);
-      activityStats = aggregatedStats.activityStats;
-      tagCount = aggregatedStats.tagCount;
-    } else if (memosResponse?.memos) {
-      // Fallback: compute from memos if backend stats not available
-      // Also used for Explore and Archived contexts
-      const displayTimeList: Date[] = [];
-      const memos = memosResponse.memos;
-
-      for (const memo of memos) {
-        // Collect display timestamps for activity calendar
-        const displayTime = memo.displayTime ? timestampDate(memo.displayTime) : undefined;
-        if (displayTime) {
-          displayTimeList.push(displayTime);
+    if (context === "explore" || context === "archived") {
+      const displayDates: string[] = [];
+      for (const stats of allUserStats) {
+        for (const [tag, count] of Object.entries(stats.tagCount ?? {})) {
+          tagCount[tag] = (tagCount[tag] ?? 0) + count;
         }
-        // Count tags
-        if (memo.tags && memo.tags.length > 0) {
-          for (const tag of memo.tags) {
-            tagCount[tag] = (tagCount[tag] || 0) + 1;
-          }
-        }
+        displayDates.push(
+          ...timestampsForBasis(stats, timeBasis)
+            .map((ts) => (ts ? timestampDate(ts) : undefined))
+            .filter((date): date is Date => date !== undefined)
+            .map(toDateString),
+        );
       }
-
-      activityStats = countBy(displayTimeList.map((date) => dayjs(date).format("YYYY-MM-DD")));
+      activityStats = countBy(displayDates);
+    } else if (userName && userStats) {
+      // home/profile: use backend per-user stats.
+      const sourceArray = timestampsForBasis(userStats, timeBasis);
+      if (sourceArray.length > 0) {
+        activityStats = countBy(
+          sourceArray
+            .map((ts) => (ts ? timestampDate(ts) : undefined))
+            .filter((date): date is Date => date !== undefined)
+            .map(toDateString),
+        );
+      }
+      if (userStats.tagCount) {
+        tagCount = userStats.tagCount;
+      }
     }
 
-    return {
-      statistics: { activityStats },
-      tags: tagCount,
-      loading,
-    };
-  }, [includeAllUsers, allUserStats, userName, userStats, memosResponse, isLoadingUserStats, isLoadingAllUserStats, isLoadingMemos]);
+    return { statistics: { activityStats, timeBasis }, tags: tagCount, loading };
+  }, [context, userName, userStats, allUserStats, isLoadingUserStats, isLoadingAllUserStats, timeBasis]);
 
   return data;
 };
