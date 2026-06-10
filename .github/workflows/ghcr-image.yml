@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - recover-muling-custom-202602
     tags:
       - "v*.*.*"
       - "custom-*"
@@ -70,7 +69,7 @@ jobs:
             else
               echo "${IMAGE_NAME}:${safe_ref}"
 
-              if [ "${GITHUB_REF_NAME}" = "recover-muling-custom-202602" ] || [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+              if [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
                 echo "${IMAGE_NAME}:custom"
               fi
 
