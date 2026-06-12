@@ -7,12 +7,13 @@ import InsertMenu from "../Toolbar/InsertMenu";
 import VisibilitySelector from "../Toolbar/VisibilitySelector";
 import type { EditorToolbarProps } from "../types";
 
-export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoName, onAudioRecorderClick }) => {
+export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoName, onAudioRecorderClick, onFilesSelected }) => {
   const t = useTranslate();
   const { state, actions, dispatch } = useEditorContext();
-  const { valid } = validationService.canSave(state);
+  const { valid, reason } = validationService.canSave(state);
 
   const isSaving = state.ui.isLoading.saving;
+  const isUploading = state.ui.isLoading.uploading;
 
   const handleLocationChange = (location: typeof state.metadata.location) => {
     dispatch(actions.setMetadata({ location }));
@@ -30,12 +31,13 @@ export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoNa
     <div className="w-full flex flex-row justify-between items-center mb-2">
       <div className="flex flex-row justify-start items-center">
         <InsertMenu
-          isUploading={state.ui.isLoading.uploading}
+          isUploading={isUploading}
           location={state.metadata.location}
           onLocationChange={handleLocationChange}
           onToggleFocusMode={handleToggleFocusMode}
           memoName={memoName}
           onAudioRecorderClick={onAudioRecorderClick}
+          onFilesSelected={onFilesSelected}
         />
       </div>
 
@@ -48,8 +50,8 @@ export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoNa
           </Button>
         )}
 
-        <Button onClick={onSave} disabled={!valid || isSaving}>
-          {isSaving ? t("editor.saving") : t("editor.save")}
+        <Button onClick={onSave} disabled={!valid || isSaving} title={!valid ? reason : undefined}>
+          {isSaving ? t("editor.saving") : isUploading ? t("editor.attachment-upload.uploading") : t("editor.save")}
         </Button>
       </div>
     </div>

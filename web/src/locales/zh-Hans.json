@@ -135,6 +135,11 @@
     "save": "保存",
     "saving": "保存中...",
     "slash-commands": "按下 `/` 输入命令",
+    "attachment-upload": {
+      "failed": "上传失败",
+      "pending": "等待上传",
+      "uploading": "上传中..."
+    },
     "insert-menu": {
       "add-location": "添加位置",
       "link-memo": "链接备忘录",

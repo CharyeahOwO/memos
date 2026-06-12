@@ -3,6 +3,7 @@ import type { Location, Memo, Visibility } from "@/types/proto/api/v1/memo_servi
 import type { EditorRefActions } from "../Editor";
 import type { Command } from "../Editor/commands";
 import type { EditorState } from "../state";
+import type { LocalFile } from "./attachment";
 
 export interface MemoEditorProps {
   className?: string;
@@ -26,6 +27,7 @@ export interface MemoEditorProps {
 
 export interface EditorContentProps {
   placeholder?: string;
+  onFilesSelected: (localFiles: LocalFile[]) => void;
 }
 
 export interface EditorToolbarProps {
@@ -33,10 +35,14 @@ export interface EditorToolbarProps {
   onCancel?: () => void;
   memoName?: string;
   onAudioRecorderClick: () => void;
+  onFilesSelected: (localFiles: LocalFile[]) => void;
 }
 
 export interface EditorMetadataProps {
   memoName?: string;
+  onLocalFilesChange: (localFiles: LocalFile[]) => void;
+  onRemoveLocalFile: (previewUrl: string) => void;
+  onRetryLocalFile: (previewUrl: string) => void;
 }
 
 export interface AudioRecorderPanelProps {
@@ -68,6 +74,7 @@ export interface InsertMenuProps {
   onToggleFocusMode?: () => void;
   memoName?: string;
   onAudioRecorderClick?: () => void;
+  onFilesSelected: (localFiles: LocalFile[]) => void;
 }
 
 export interface TagSuggestionsProps {

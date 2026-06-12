@@ -22,7 +22,7 @@ import {
 } from "./components";
 import { FOCUS_MODE_STYLES } from "./constants";
 import type { EditorRefActions } from "./Editor";
-import { useAudioRecorder, useAutoSave, useFocusMode, useKeyboard, useMemoInit } from "./hooks";
+import { useAttachmentUploadQueue, useAudioRecorder, useAutoSave, useFocusMode, useKeyboard, useMemoInit } from "./hooks";
 import { errorService, memoService, transcriptionService, validationService } from "./services";
 import { EditorProvider, useEditorContext } from "./state";
 import type { MemoEditorProps } from "./types";
@@ -50,6 +50,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
   const currentUser = useCurrentUser();
   const editorRef = useRef<EditorRefActions>(null);
   const { state, actions, dispatch } = useEditorContext();
+  const { uploadLocalFiles, retryLocalFile, setLocalFiles, removeLocalFile } = useAttachmentUploadQueue();
   const { userGeneralSetting } = useAuth();
   const { aiSetting, fetchSetting } = useInstance();
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
@@ -127,7 +128,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
   const handleTranscribeRecordedAudio = useCallback(
     async (localFile: LocalFile) => {
       if (!canTranscribe) {
-        dispatch(actions.addLocalFile(localFile));
+        uploadLocalFiles([localFile]);
         setIsTranscribingAudio(false);
         setIsAudioRecorderOpen(false);
         return;
@@ -136,7 +137,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
       try {
         const text = (await transcriptionService.transcribeFile(localFile.file)).trim();
         if (!text) {
-          dispatch(actions.addLocalFile(localFile));
+          uploadLocalFiles([localFile]);
           toast.error(t("editor.audio-recorder.transcribe-empty"));
           return;
         }
@@ -146,13 +147,13 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
       } catch (error) {
         console.error(error);
         toast.error(errorService.getErrorMessage(error) || t("editor.audio-recorder.transcribe-error"));
-        dispatch(actions.addLocalFile(localFile));
+        uploadLocalFiles([localFile]);
       } finally {
         setIsTranscribingAudio(false);
         setIsAudioRecorderOpen(false);
       }
     },
-    [actions, canTranscribe, dispatch, insertTranscribedText, t],
+    [canTranscribe, insertTranscribedText, t, uploadLocalFiles],
   );
 
   const audioRecorderActions = useMemo(
@@ -169,7 +170,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
           return;
         }
 
-        dispatch(actions.addLocalFile(localFile));
+        uploadLocalFiles([localFile]);
         setIsAudioRecorderOpen(false);
       },
       onRecordingEmpty: (mode: "attach" | "transcribe") => {
@@ -180,7 +181,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
         setIsAudioRecorderOpen(false);
       },
     }),
-    [actions, dispatch, handleTranscribeRecordedAudio, t],
+    [actions, dispatch, handleTranscribeRecordedAudio, t, uploadLocalFiles],
   );
 
   const audioRecorder = useAudioRecorder(audioRecorderActions);
@@ -327,7 +328,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
         )}
 
         {/* Editor content grows to fill available space in focus mode */}
-        <EditorContent ref={editorRef} placeholder={placeholder} />
+        <EditorContent ref={editorRef} placeholder={placeholder} onFilesSelected={uploadLocalFiles} />
 
         {isAudioRecorderOpen &&
           (state.audioRecorder.status === "recording" || state.audioRecorder.status === "requesting_permission" || isTranscribingAudio) && (
@@ -344,8 +345,19 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
 
         {/* Metadata and toolbar grouped together at bottom */}
         <div className="w-full flex flex-col gap-2">
-          <EditorMetadata memoName={memoName} />
-          <EditorToolbar onSave={handleSave} onCancel={onCancel} memoName={memoName} onAudioRecorderClick={handleAudioRecorderClick} />
+          <EditorMetadata
+            memoName={memoName}
+            onLocalFilesChange={setLocalFiles}
+            onRemoveLocalFile={removeLocalFile}
+            onRetryLocalFile={retryLocalFile}
+          />
+          <EditorToolbar
+            onSave={handleSave}
+            onCancel={onCancel}
+            memoName={memoName}
+            onAudioRecorderClick={handleAudioRecorderClick}
+            onFilesSelected={uploadLocalFiles}
+          />
         </div>
       </div>
     </>

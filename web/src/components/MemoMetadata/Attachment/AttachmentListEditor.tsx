@@ -1,4 +1,16 @@
-import { ChevronDownIcon, ChevronUpIcon, FileAudioIcon, FileIcon, PaperclipIcon, PauseIcon, PlayIcon, XIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  FileAudioIcon,
+  FileIcon,
+  LoaderIcon,
+  PaperclipIcon,
+  PauseIcon,
+  PlayIcon,
+  RefreshCcwIcon,
+  XIcon,
+} from "lucide-react";
 import { type FC, type MouseEvent, useMemo, useRef, useState } from "react";
 import type { AttachmentItem, LocalFile } from "@/components/MemoEditor/types/attachment";
 import { getAudioRecordingTimeLabel, toAttachmentItems } from "@/components/MemoEditor/types/attachment";
@@ -17,15 +29,17 @@ interface AttachmentListEditorProps {
   onAttachmentsChange?: (attachments: Attachment[]) => void;
   onLocalFilesChange?: (localFiles: LocalFile[]) => void;
   onRemoveLocalFile?: (previewUrl: string) => void;
+  onRetryLocalFile?: (previewUrl: string) => void;
 }
 
 const AttachmentItemActions: FC<{
   onRemove?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  onRetry?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
-}> = ({ onRemove, onMoveUp, onMoveDown, canMoveUp = true, canMoveDown = true }) => {
+}> = ({ onRemove, onMoveUp, onMoveDown, onRetry, canMoveUp = true, canMoveDown = true }) => {
   const stopPropagation = (event: MouseEvent) => {
     event.stopPropagation();
   };
@@ -70,6 +84,21 @@ const AttachmentItemActions: FC<{
         </button>
       )}
 
+      {onRetry && (
+        <button
+          type="button"
+          onClick={(event) => {
+            stopPropagation(event);
+            onRetry();
+          }}
+          className="ml-0.5 touch-manipulation rounded p-0.5 transition-colors hover:bg-accent active:bg-accent"
+          title="Retry upload"
+          aria-label="Retry attachment upload"
+        >
+          <RefreshCcwIcon className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+        </button>
+      )}
+
       {onRemove && (
         <button
           type="button"
@@ -94,9 +123,10 @@ const AttachmentItemCard: FC<{
   onRemove?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  onRetry?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
-}> = ({ item, onPreview, onRemove, onMoveUp, onMoveDown, canMoveUp = true, canMoveDown = true }) => {
+}> = ({ item, onPreview, onRemove, onMoveUp, onMoveDown, onRetry, canMoveUp = true, canMoveDown = true }) => {
   const t = useTranslate();
   const { category, filename, thumbnailUrl, mimeType, size, sourceUrl, isVoiceNote, audioMeta } = item;
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -115,6 +145,16 @@ const AttachmentItemCard: FC<{
     fileTypeLabel,
     size ? formatFileSize(size) : undefined,
   ].filter(Boolean);
+  const uploadStatusLabel =
+    item.uploadStatus === "failed"
+      ? t("editor.attachment-upload.failed")
+      : item.uploadStatus === "pending"
+        ? t("editor.attachment-upload.pending")
+        : item.uploadStatus === "uploading"
+          ? t("editor.attachment-upload.uploading")
+          : undefined;
+  const isUploading = item.uploadStatus === "pending" || item.uploadStatus === "uploading";
+  const isFailed = item.uploadStatus === "failed";
 
   const handleAudioToggle = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -137,7 +177,13 @@ const AttachmentItemCard: FC<{
   };
 
   return (
-    <div className="relative rounded border border-transparent px-1.5 py-1 transition-all hover:border-border hover:bg-accent/20">
+    <div
+      className={cn(
+        "relative overflow-hidden rounded border border-transparent px-1.5 py-1 transition-all hover:border-border hover:bg-accent/20",
+        isFailed && "border-destructive/30 bg-destructive/5 hover:border-destructive/40 hover:bg-destructive/10",
+      )}
+      title={isFailed ? item.uploadError : undefined}
+    >
       <div className="flex items-center gap-1.5">
         <div className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-muted/40">
           {(category === "image" || category === "motion") && thumbnailUrl ? (
@@ -194,6 +240,16 @@ const AttachmentItemCard: FC<{
               Live
             </span>
           )}
+          {isUploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+              <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary" />
+            </div>
+          )}
+          {isFailed && (
+            <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
+              <AlertCircleIcon className="h-3.5 w-3.5 text-destructive" />
+            </div>
+          )}
         </div>
 
         <div className="min-w-0 flex-1 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-1.5">
@@ -201,10 +257,11 @@ const AttachmentItemCard: FC<{
             {titleLabel}
           </span>
 
-          <div className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+          <div className={cn("flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground", isFailed && "text-destructive")}>
+            {uploadStatusLabel && <span>{uploadStatusLabel}</span>}
             {detailParts.map((part, index) => (
               <span key={`${item.id}-${part}`}>
-                {index > 0 && <span className="hidden text-muted-foreground/50 sm:inline"> • </span>}
+                {(index > 0 || uploadStatusLabel) && <span className="hidden text-muted-foreground/50 sm:inline"> • </span>}
                 <span>{part}</span>
               </span>
             ))}
@@ -215,10 +272,19 @@ const AttachmentItemCard: FC<{
           onRemove={onRemove}
           onMoveUp={onMoveUp}
           onMoveDown={onMoveDown}
+          onRetry={isFailed ? onRetry : undefined}
           canMoveUp={canMoveUp}
           canMoveDown={canMoveDown}
         />
       </div>
+      {isUploading && (
+        <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-primary/10" role="progressbar">
+          <div
+            className={cn("h-full bg-primary", typeof item.uploadProgress === "number" ? "" : "w-1/2 animate-pulse")}
+            style={typeof item.uploadProgress === "number" ? { width: `${Math.max(5, Math.min(100, item.uploadProgress))}%` } : undefined}
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -229,6 +295,7 @@ const AttachmentListEditor: FC<AttachmentListEditorProps> = ({
   onAttachmentsChange,
   onLocalFilesChange,
   onRemoveLocalFile,
+  onRetryLocalFile,
 }) => {
   const [previewState, setPreviewState] = useState<{ open: boolean; initialIndex: number }>({ open: false, initialIndex: 0 });
   const items = toAttachmentItems(attachments, localFiles);
@@ -308,6 +375,14 @@ const AttachmentListEditor: FC<AttachmentListEditorProps> = ({
     }
   };
 
+  const handleRetryItem = (item: AttachmentItem) => {
+    if (!item.isLocal || !onRetryLocalFile) {
+      return;
+    }
+
+    item.memberIds.forEach((previewUrl) => onRetryLocalFile(previewUrl));
+  };
+
   const handlePreviewItem = (item: AttachmentItem) => {
     const previewIndex = previewItems.findIndex((previewItem) => previewItem.id === item.id);
     if (previewIndex < 0) {
@@ -340,6 +415,7 @@ const AttachmentListEditor: FC<AttachmentListEditorProps> = ({
               onRemove={() => handleRemoveItem(item)}
               onMoveUp={item.isLocal ? () => handleMoveLocalFiles(item.id, -1) : () => handleMoveAttachments(item.id, -1)}
               onMoveDown={item.isLocal ? () => handleMoveLocalFiles(item.id, 1) : () => handleMoveAttachments(item.id, 1)}
+              onRetry={item.isLocal ? () => handleRetryItem(item) : undefined}
               canMoveUp={itemIndex > 0}
               canMoveDown={itemIndex >= 0 && itemIndex < itemList.length - 1}
             />

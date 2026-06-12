@@ -38,7 +38,7 @@ import type { LocalFile } from "../types/attachment";
 const InsertMenu = (props: InsertMenuProps) => {
   const t = useTranslate();
   const { state, actions, dispatch } = useEditorContext();
-  const { location: initialLocation, onLocationChange, onToggleFocusMode, isUploading: isUploadingProp } = props;
+  const { location: initialLocation, onLocationChange, onToggleFocusMode, isUploading: isUploadingProp, onFilesSelected } = props;
 
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
@@ -50,7 +50,7 @@ const InsertMenu = (props: InsertMenuProps) => {
   );
 
   const { fileInputRef, selectingFlag, handleFileInputChange, handleUploadClick } = useFileUpload((newFiles: LocalFile[]) => {
-    newFiles.forEach((file) => dispatch(actions.addLocalFile(file)));
+    onFilesSelected(newFiles);
   });
 
   const linkMemo = useLinkMemo({

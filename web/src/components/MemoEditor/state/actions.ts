@@ -1,6 +1,6 @@
 import type { Attachment } from "@/types/proto/api/v1/attachment_service_pb";
 import type { MemoRelation } from "@/types/proto/api/v1/memo_service_pb";
-import type { LocalFile } from "../types/attachment";
+import type { LocalFile, LocalFileUploadStatus } from "../types/attachment";
 import type { AudioRecorderPermission, AudioRecorderStatus, EditorAction, EditorState, LoadingKey } from "./types";
 
 export const editorActions = {
@@ -52,6 +52,17 @@ export const editorActions = {
   setLocalFiles: (files: LocalFile[]): EditorAction => ({
     type: "SET_LOCAL_FILES",
     payload: files,
+  }),
+
+  updateLocalFileUpload: (
+    previewUrl: string,
+    upload: { status: LocalFileUploadStatus; error?: string; progress?: number },
+  ): EditorAction => ({
+    type: "UPDATE_LOCAL_FILE_UPLOAD",
+    payload: {
+      previewUrl,
+      ...upload,
+    },
   }),
 
   clearLocalFiles: (): EditorAction => ({

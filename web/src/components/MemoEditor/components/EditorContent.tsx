@@ -5,7 +5,7 @@ import { useEditorContext } from "../state";
 import type { EditorContentProps } from "../types";
 import type { LocalFile } from "../types/attachment";
 
-export const EditorContent = forwardRef<EditorRefActions, EditorContentProps>(({ placeholder }, ref) => {
+export const EditorContent = forwardRef<EditorRefActions, EditorContentProps>(({ placeholder, onFilesSelected }, ref) => {
   const { state, actions, dispatch } = useEditorContext();
   const { createBlobUrl } = useBlobUrls();
 
@@ -15,7 +15,7 @@ export const EditorContent = forwardRef<EditorRefActions, EditorContentProps>(({
       previewUrl: createBlobUrl(file),
       origin: "upload",
     }));
-    localFiles.forEach((localFile) => dispatch(actions.addLocalFile(localFile)));
+    onFilesSelected(localFiles);
   });
 
   const handleCompositionStart = () => {
@@ -52,7 +52,7 @@ export const EditorContent = forwardRef<EditorRefActions, EditorContentProps>(({
       previewUrl: createBlobUrl(file),
       origin: "upload",
     }));
-    localFiles.forEach((localFile) => dispatch(actions.addLocalFile(localFile)));
+    onFilesSelected(localFiles);
     event.preventDefault();
   };
 

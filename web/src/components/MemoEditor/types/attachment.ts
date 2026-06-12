@@ -4,6 +4,7 @@ import { getAttachmentThumbnailUrl, getAttachmentType, getAttachmentUrl } from "
 import { buildAttachmentVisualItems } from "@/utils/media-item";
 
 export type FileCategory = "image" | "video" | "motion" | "audio" | "document";
+export type LocalFileUploadStatus = "pending" | "uploading" | "failed";
 
 export interface AttachmentItem {
   readonly id: string;
@@ -17,6 +18,9 @@ export interface AttachmentItem {
   readonly isLocal: boolean;
   readonly isVoiceNote: boolean;
   readonly audioMeta?: LocalFile["audioMeta"];
+  readonly uploadStatus?: LocalFileUploadStatus;
+  readonly uploadError?: string;
+  readonly uploadProgress?: number;
 }
 
 export interface LocalFile {
@@ -27,7 +31,18 @@ export interface LocalFile {
     readonly durationSeconds: number;
   };
   readonly motionMedia?: MotionMedia;
+  readonly uploadStatus?: LocalFileUploadStatus;
+  readonly uploadError?: string;
+  readonly uploadProgress?: number;
 }
+
+export const isLocalFileUploading = (localFile: LocalFile): boolean =>
+  localFile.uploadStatus === "pending" || localFile.uploadStatus === "uploading";
+
+export const hasUploadingLocalFiles = (localFiles: LocalFile[]): boolean => localFiles.some(isLocalFileUploading);
+
+export const hasFailedLocalFiles = (localFiles: LocalFile[]): boolean =>
+  localFiles.some((localFile) => localFile.uploadStatus === "failed");
 
 const AUDIO_RECORDING_FILENAME_RE = /^(?:voice-(?:recording|note)|audio-recording)-(\d{8})-(\d{4,6})/i;
 
@@ -75,6 +90,9 @@ function attachmentGroupToItem(attachment: Attachment): AttachmentItem {
     isLocal: false,
     isVoiceNote: categorizeFile(attachment.type) === "audio" && isAudioRecordingFilename(attachment.filename),
     audioMeta: undefined,
+    uploadStatus: undefined,
+    uploadError: undefined,
+    uploadProgress: undefined,
   };
 }
 
@@ -91,6 +109,9 @@ function visualItemToAttachmentItem(item: ReturnType<typeof buildAttachmentVisua
     isLocal: false,
     isVoiceNote: false,
     audioMeta: undefined,
+    uploadStatus: undefined,
+    uploadError: undefined,
+    uploadProgress: undefined,
   };
 }
 
@@ -109,6 +130,9 @@ function fileToItem(file: LocalFile): AttachmentItem {
       categorizeFile(file.file.type, file.motionMedia) === "audio" &&
       (file.origin === "audio_recording" || isAudioRecordingFilename(file.file.name)),
     audioMeta: file.audioMeta,
+    uploadStatus: file.uploadStatus,
+    uploadError: file.uploadError,
+    uploadProgress: file.uploadProgress,
   };
 }
 
@@ -136,21 +160,30 @@ function toLocalMotionItems(localFiles: LocalFile[]): AttachmentItem[] {
       (file) => file.motionMedia?.family === MotionMediaFamily.APPLE_LIVE_PHOTO && file.motionMedia.role === MotionMediaRole.VIDEO,
     );
     if (still && video && files.length === 2) {
-      return [
-        {
-          id: groupId,
-          memberIds: [still.previewUrl, video.previewUrl],
-          filename: still.file.name,
-          category: "motion" as const,
-          mimeType: still.file.type,
-          thumbnailUrl: still.previewUrl,
-          sourceUrl: video.previewUrl,
-          size: still.file.size + video.file.size,
-          isLocal: true,
-          isVoiceNote: false,
-          audioMeta: undefined,
-        },
-      ];
+      const item: AttachmentItem = {
+        id: groupId,
+        memberIds: [still.previewUrl, video.previewUrl],
+        filename: still.file.name,
+        category: "motion",
+        mimeType: still.file.type,
+        thumbnailUrl: still.previewUrl,
+        sourceUrl: video.previewUrl,
+        size: still.file.size + video.file.size,
+        isLocal: true,
+        isVoiceNote: false,
+        audioMeta: undefined,
+        uploadStatus: files.some((file) => file.uploadStatus === "failed")
+          ? "failed"
+          : files.some(isLocalFileUploading)
+            ? "uploading"
+            : undefined,
+        uploadError: files.find((file) => file.uploadError)?.uploadError,
+        uploadProgress: files.every((file) => typeof file.uploadProgress === "number")
+          ? files.reduce((total, file) => total + (file.uploadProgress ?? 0), 0) / files.length
+          : undefined,
+      };
+
+      return [item];
     }
 
     return files.map(fileToItem);

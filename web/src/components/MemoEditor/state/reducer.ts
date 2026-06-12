@@ -1,5 +1,20 @@
+import { hasUploadingLocalFiles, type LocalFile } from "../types/attachment";
 import type { EditorAction, EditorState } from "./types";
 import { initialState } from "./types";
+
+function withLocalFiles(state: EditorState, localFiles: LocalFile[]): EditorState {
+  return {
+    ...state,
+    localFiles,
+    ui: {
+      ...state.ui,
+      isLoading: {
+        ...state.ui.isLoading,
+        uploading: hasUploadingLocalFiles(localFiles),
+      },
+    },
+  };
+}
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
@@ -63,28 +78,36 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
 
     case "ADD_LOCAL_FILE":
-      return {
-        ...state,
-        localFiles: [...state.localFiles, action.payload],
-      };
+      return withLocalFiles(state, [...state.localFiles, action.payload]);
 
     case "REMOVE_LOCAL_FILE":
-      return {
-        ...state,
-        localFiles: state.localFiles.filter((f) => f.previewUrl !== action.payload),
-      };
+      return withLocalFiles(
+        state,
+        state.localFiles.filter((f) => f.previewUrl !== action.payload),
+      );
 
     case "SET_LOCAL_FILES":
-      return {
-        ...state,
-        localFiles: action.payload,
-      };
+      return withLocalFiles(state, action.payload);
+
+    case "UPDATE_LOCAL_FILE_UPLOAD":
+      return withLocalFiles(
+        state,
+        state.localFiles.map((localFile) => {
+          if (localFile.previewUrl !== action.payload.previewUrl) {
+            return localFile;
+          }
+
+          return {
+            ...localFile,
+            uploadStatus: action.payload.status,
+            uploadError: action.payload.error,
+            uploadProgress: action.payload.progress,
+          };
+        }),
+      );
 
     case "CLEAR_LOCAL_FILES":
-      return {
-        ...state,
-        localFiles: [],
-      };
+      return withLocalFiles(state, []);
 
     case "TOGGLE_FOCUS_MODE":
       return {

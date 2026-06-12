@@ -1,4 +1,6 @@
 // Custom hooks for MemoEditor (internal use only)
+
+export { useAttachmentUploadQueue } from "./useAttachmentUploadQueue";
 export { useAudioRecorder } from "./useAudioRecorder";
 export { useAudioWaveform } from "./useAudioWaveform";
 export { useAutoSave } from "./useAutoSave";

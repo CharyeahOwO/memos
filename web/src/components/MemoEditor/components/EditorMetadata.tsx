@@ -3,7 +3,7 @@ import { AttachmentListEditor, LocationDisplayEditor, RelationListEditor } from 
 import { useEditorContext } from "../state";
 import type { EditorMetadataProps } from "../types";
 
-export const EditorMetadata: FC<EditorMetadataProps> = ({ memoName }) => {
+export const EditorMetadata: FC<EditorMetadataProps> = ({ memoName, onLocalFilesChange, onRemoveLocalFile, onRetryLocalFile }) => {
   const { state, actions, dispatch } = useEditorContext();
 
   return (
@@ -12,8 +12,9 @@ export const EditorMetadata: FC<EditorMetadataProps> = ({ memoName }) => {
         attachments={state.metadata.attachments}
         localFiles={state.localFiles}
         onAttachmentsChange={(attachments) => dispatch(actions.setMetadata({ attachments }))}
-        onLocalFilesChange={(localFiles) => dispatch(actions.setLocalFiles(localFiles))}
-        onRemoveLocalFile={(previewUrl) => dispatch(actions.removeLocalFile(previewUrl))}
+        onLocalFilesChange={onLocalFilesChange}
+        onRemoveLocalFile={onRemoveLocalFile}
+        onRetryLocalFile={onRetryLocalFile}
       />
 
       <RelationListEditor

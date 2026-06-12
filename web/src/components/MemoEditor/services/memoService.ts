@@ -7,7 +7,6 @@ import { AttachmentSchema } from "@/types/proto/api/v1/attachment_service_pb";
 import type { Memo } from "@/types/proto/api/v1/memo_service_pb";
 import { MemoSchema } from "@/types/proto/api/v1/memo_service_pb";
 import type { EditorState } from "../state";
-import { uploadService } from "./uploadService";
 
 /**
  * Converts attachments to reference format for API requests.
@@ -81,11 +80,13 @@ export const memoService = {
       parentMemoName?: string;
     },
   ): Promise<{ memoName: string; hasChanges: boolean }> {
-    // 1. Upload local files first
-    const newAttachments = await uploadService.uploadFiles(state.localFiles);
-    const allAttachments = [...state.metadata.attachments, ...newAttachments];
+    if (state.localFiles.length > 0) {
+      throw new Error("Wait for all attachments to finish uploading before saving");
+    }
 
-    // 2. Update existing memo
+    const allAttachments = state.metadata.attachments;
+
+    // 1. Update existing memo
     if (options.memoName) {
       const prevMemo = await memoServiceClient.getMemo({ name: options.memoName });
       const { mask, patch } = buildUpdateMask(prevMemo, state, allAttachments);
@@ -101,7 +102,7 @@ export const memoService = {
       return { memoName: memo.name, hasChanges: true };
     }
 
-    // 3. Create new memo or comment
+    // 2. Create new memo or comment
     const memoData = create(MemoSchema, {
       content: state.content,
       visibility: state.metadata.visibility,
