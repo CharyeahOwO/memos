@@ -169,17 +169,14 @@ func (s *Store) DeleteAttachments(ctx context.Context, attachments []*Attachment
 	}
 
 	instanceStorageSetting, instanceStorageSettingErr := s.getAttachmentStorageCleanupInstanceSetting(ctx, attachments)
+	if instanceStorageSettingErr != nil {
+		slog.Warn("Failed to get instance storage setting for attachment cleanup", slog.Any("err", instanceStorageSettingErr))
+	}
 	for _, attachment := range attachments {
 		if attachment == nil {
 			continue
 		}
-		var err error
-		if instanceStorageSettingErr != nil && AttachmentNeedsInstanceStorageSetting(attachment) {
-			err = instanceStorageSettingErr
-		} else {
-			err = s.deleteAttachmentStorageImpl(ctx, attachment, instanceStorageSetting)
-		}
-		if err != nil {
+		if err := s.deleteAttachmentStorageImpl(ctx, attachment, instanceStorageSetting); err != nil {
 			if attachment.StorageType == storepb.AttachmentStorageType_LOCAL {
 				return errors.Wrap(err, "failed to delete local file")
 			}
@@ -223,23 +220,27 @@ func (s *Store) deleteAttachmentStorageImpl(ctx context.Context, attachment *Att
 		}
 	} else if attachment.StorageType == storepb.AttachmentStorageType_S3 {
 		if err := func() error {
+			if attachment.Payload == nil {
+				return errors.Errorf("No s3 object found")
+			}
 			s3ObjectPayload := attachment.Payload.GetS3Object()
 			if s3ObjectPayload == nil {
 				return errors.Errorf("No s3 object found")
 			}
-			s3Config := s3ObjectPayload.S3Config
+			if instanceStorageSetting == nil {
+				var err error
+				instanceStorageSetting, err = s.GetInstanceStorageSetting(ctx)
+				if err != nil && s3ObjectPayload.S3Config == nil {
+					return errors.Wrap(err, "failed to get instance storage setting")
+				}
+			}
+			var fallbackS3Config *storepb.StorageS3Config
+			if instanceStorageSetting != nil {
+				fallbackS3Config = instanceStorageSetting.S3Config
+			}
+			s3Config := s3.OverlayConfig(s3ObjectPayload.S3Config, fallbackS3Config)
 			if s3Config == nil {
-				if instanceStorageSetting == nil {
-					var err error
-					instanceStorageSetting, err = s.GetInstanceStorageSetting(ctx)
-					if err != nil {
-						return errors.Wrap(err, "failed to get instance storage setting")
-					}
-				}
-				if instanceStorageSetting.S3Config == nil {
-					return errors.Errorf("S3 config is not found")
-				}
-				s3Config = instanceStorageSetting.S3Config
+				return errors.Errorf("S3 config is not found")
 			}
 
 			s3Client, err := s3.NewClient(ctx, s3Config)
@@ -277,13 +278,18 @@ func AttachmentNeedsInstanceStorageSetting(attachment *Attachment) bool {
 	if attachment == nil || attachment.StorageType != storepb.AttachmentStorageType_S3 {
 		return false
 	}
+	if attachment.Payload == nil {
+		return false
+	}
 	s3ObjectPayload := attachment.Payload.GetS3Object()
-	return s3ObjectPayload != nil && s3ObjectPayload.S3Config == nil
+	return s3ObjectPayload != nil
 }
 
 func (s *Store) deleteAttachmentDerivedCaches(attachment *Attachment) {
 	for _, cachePath := range []string{
 		filepath.Join(s.profile.Data, thumbnailCacheFolder, attachment.UID+".jpeg"),
+		filepath.Join(s.profile.Data, thumbnailCacheFolder, attachment.UID+".v2.jpeg"),
+		filepath.Join(s.profile.Data, thumbnailCacheFolder, attachment.UID+".v3.jpeg"),
 		filepath.Join(s.profile.Data, motionCacheFolder, attachment.UID+".mp4"),
 	} {
 		if err := os.Remove(cachePath); err != nil && !os.IsNotExist(err) {

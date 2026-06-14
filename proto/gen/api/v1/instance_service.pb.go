@@ -1524,12 +1524,19 @@ type InstanceSetting_StorageSetting_S3Config struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	AccessKeyId     string                 `protobuf:"bytes,1,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
 	AccessKeySecret string                 `protobuf:"bytes,2,opt,name=access_key_secret,json=accessKeySecret,proto3" json:"access_key_secret,omitempty"`
-	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Region          string                 `protobuf:"bytes,4,opt,name=region,proto3" json:"region,omitempty"`
-	Bucket          string                 `protobuf:"bytes,5,opt,name=bucket,proto3" json:"bucket,omitempty"`
-	UsePathStyle    bool                   `protobuf:"varint,6,opt,name=use_path_style,json=usePathStyle,proto3" json:"use_path_style,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// endpoint is the public S3-compatible endpoint kept for backward compatibility.
+	Endpoint     string `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	Region       string `protobuf:"bytes,4,opt,name=region,proto3" json:"region,omitempty"`
+	Bucket       string `protobuf:"bytes,5,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	UsePathStyle bool   `protobuf:"varint,6,opt,name=use_path_style,json=usePathStyle,proto3" json:"use_path_style,omitempty"`
+	// internal_endpoint is preferred by the server for upload, read, delete, and derived media generation.
+	InternalEndpoint string `protobuf:"bytes,7,opt,name=internal_endpoint,json=internalEndpoint,proto3" json:"internal_endpoint,omitempty"`
+	// public_url_base is preferred by browsers for stable object URLs.
+	PublicUrlBase string `protobuf:"bytes,8,opt,name=public_url_base,json=publicUrlBase,proto3" json:"public_url_base,omitempty"`
+	// cache_control is written to uploaded objects when set.
+	CacheControl  string `protobuf:"bytes,9,opt,name=cache_control,json=cacheControl,proto3" json:"cache_control,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InstanceSetting_StorageSetting_S3Config) Reset() {
@@ -1602,6 +1609,27 @@ func (x *InstanceSetting_StorageSetting_S3Config) GetUsePathStyle() bool {
 		return x.UsePathStyle
 	}
 	return false
+}
+
+func (x *InstanceSetting_StorageSetting_S3Config) GetInternalEndpoint() string {
+	if x != nil {
+		return x.InternalEndpoint
+	}
+	return ""
+}
+
+func (x *InstanceSetting_StorageSetting_S3Config) GetPublicUrlBase() string {
+	if x != nil {
+		return x.PublicUrlBase
+	}
+	return ""
+}
+
+func (x *InstanceSetting_StorageSetting_S3Config) GetCacheControl() string {
+	if x != nil {
+		return x.CacheControl
+	}
+	return ""
 }
 
 // Email delivery configuration for notifications.
@@ -1787,7 +1815,7 @@ const file_api_v1_instance_service_proto_rawDesc = "" +
 	"\finstance_url\x18\x06 \x01(\tR\vinstanceUrl\x12(\n" +
 	"\x05admin\x18\a \x01(\v2\x12.memos.api.v1.UserR\x05admin\x12\x16\n" +
 	"\x06commit\x18\b \x01(\tR\x06commit\"\x1b\n" +
-	"\x19GetInstanceProfileRequest\"\xcd\x1b\n" +
+	"\x19GetInstanceProfileRequest\"\xc7\x1c\n" +
 	"\x0fInstanceSetting\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12W\n" +
 	"\x0fgeneral_setting\x18\x02 \x01(\v2,.memos.api.v1.InstanceSetting.GeneralSettingH\x00R\x0egeneralSetting\x12W\n" +
@@ -1809,19 +1837,22 @@ const file_api_v1_instance_service_proto_rawDesc = "" +
 	"\rCustomProfile\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x19\n" +
-	"\blogo_url\x18\x03 \x01(\tR\alogoUrl\x1a\xc1\x04\n" +
+	"\blogo_url\x18\x03 \x01(\tR\alogoUrl\x1a\xbb\x05\n" +
 	"\x0eStorageSetting\x12[\n" +
 	"\fstorage_type\x18\x01 \x01(\x0e28.memos.api.v1.InstanceSetting.StorageSetting.StorageTypeR\vstorageType\x12+\n" +
 	"\x11filepath_template\x18\x02 \x01(\tR\x10filepathTemplate\x12/\n" +
 	"\x14upload_size_limit_mb\x18\x03 \x01(\x03R\x11uploadSizeLimitMb\x12R\n" +
-	"\ts3_config\x18\x04 \x01(\v25.memos.api.v1.InstanceSetting.StorageSetting.S3ConfigR\bs3Config\x1a\xd1\x01\n" +
+	"\ts3_config\x18\x04 \x01(\v25.memos.api.v1.InstanceSetting.StorageSetting.S3ConfigR\bs3Config\x1a\xcb\x02\n" +
 	"\bS3Config\x12\"\n" +
 	"\raccess_key_id\x18\x01 \x01(\tR\vaccessKeyId\x12/\n" +
 	"\x11access_key_secret\x18\x02 \x01(\tB\x03\xe0A\x04R\x0faccessKeySecret\x12\x1a\n" +
 	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12\x16\n" +
 	"\x06region\x18\x04 \x01(\tR\x06region\x12\x16\n" +
 	"\x06bucket\x18\x05 \x01(\tR\x06bucket\x12$\n" +
-	"\x0euse_path_style\x18\x06 \x01(\bR\fusePathStyle\"L\n" +
+	"\x0euse_path_style\x18\x06 \x01(\bR\fusePathStyle\x12+\n" +
+	"\x11internal_endpoint\x18\a \x01(\tR\x10internalEndpoint\x12&\n" +
+	"\x0fpublic_url_base\x18\b \x01(\tR\rpublicUrlBase\x12#\n" +
+	"\rcache_control\x18\t \x01(\tR\fcacheControl\"L\n" +
 	"\vStorageType\x12\x1c\n" +
 	"\x18STORAGE_TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bDATABASE\x10\x01\x12\t\n" +

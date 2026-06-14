@@ -3619,6 +3619,15 @@ components:
                     type: string
                 usePathStyle:
                     type: boolean
+                internalEndpoint:
+                    type: string
+                    description: internal_endpoint is preferred by the server for upload, read, delete, and derived media generation.
+                publicUrlBase:
+                    type: string
+                    description: public_url_base is preferred by browsers for stable object URLs.
+                cacheControl:
+                    type: string
+                    description: cache_control is written to uploaded objects when set.
             description: |-
                 S3 configuration for cloud storage backend.
                  Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/

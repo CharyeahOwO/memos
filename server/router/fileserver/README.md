@@ -56,7 +56,7 @@ GET /file/attachments/:uid/:filename[?thumbnail=true]
 
 **Headers:**
 - `Content-Type` - MIME type of the file
-- `Cache-Control: public, max-age=3600`
+- `Cache-Control: public, max-age=31536000, immutable`
 - `Accept-Ranges: bytes` - For video/audio
 - `Content-Range` - For partial responses (206)
 
@@ -76,7 +76,7 @@ GET /file/users/:identifier/avatar
 
 **Headers:**
 - `Content-Type` - image/png or image/jpeg
-- `Cache-Control: public, max-age=3600`
+- `Cache-Control: public, max-age=31536000, immutable`
 
 ## Authentication
 
@@ -167,7 +167,7 @@ Validates user has permission to access attachment based on memo visibility.
 
 ### File Operations
 
-#### `getAttachmentBlob(attachment) ([]byte, error)`
+#### `getAttachmentBlob(ctx, attachment) ([]byte, error)`
 Retrieves binary content from local storage, S3, or database.
 
 #### `getOrGenerateThumbnail(ctx, attachment) ([]byte, error)`
@@ -205,7 +205,7 @@ Auth-related constants are imported from `server/auth`:
 
 Package-specific constants:
 - `ThumbnailCacheFolder` - ".thumbnail_cache"
-- `thumbnailMaxSize` - 600px
+- `thumbnailMaxSize` - 1600px
 - `SupportedThumbnailMimeTypes` - ["image/png", "image/jpeg"]
 
 ## Error Handling
@@ -270,7 +270,7 @@ Video/audio files use `http.ServeContent()` for efficient streaming:
 ### 3. Caching Headers
 All responses include cache headers:
 ```
-Cache-Control: public, max-age=3600
+Cache-Control: public, max-age=31536000, immutable
 ```
 
 ### 4. S3 External Links

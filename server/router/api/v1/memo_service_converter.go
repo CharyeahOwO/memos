@@ -68,9 +68,15 @@ func (s *APIV1Service) convertMemoFromStoreWithCreators(ctx context.Context, mem
 	}
 
 	memoMessage.Attachments = []*v1pb.Attachment{}
-	for _, attachment := range attachments {
-		attachmentResponse := convertAttachmentFromStore(attachment)
-		memoMessage.Attachments = append(memoMessage.Attachments, attachmentResponse)
+	if len(attachments) > 0 {
+		storageSetting, err := s.Store.GetInstanceStorageSetting(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get instance storage setting")
+		}
+		for _, attachment := range attachments {
+			attachmentResponse := convertAttachmentFromStoreWithStorageSetting(attachment, storageSetting)
+			memoMessage.Attachments = append(memoMessage.Attachments, attachmentResponse)
+		}
 	}
 
 	snippet, err := s.getMemoContentSnippet(memo.Content)

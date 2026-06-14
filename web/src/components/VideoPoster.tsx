@@ -6,6 +6,7 @@ interface VideoPosterProps {
   alt: string;
   className?: string;
   posterUrl?: string;
+  captureFrame?: boolean;
 }
 
 const MAX_POSTER_DIMENSION = 960;
@@ -26,7 +27,7 @@ const getCanvasSize = (width: number, height: number) => {
   };
 };
 
-const VideoPoster = ({ sourceUrl, alt, className, posterUrl }: VideoPosterProps) => {
+const VideoPoster = ({ sourceUrl, alt, className, posterUrl, captureFrame: shouldCaptureFrame = false }: VideoPosterProps) => {
   const usablePosterUrl = posterUrl && posterUrl !== sourceUrl ? posterUrl : undefined;
   const [capturedPosterUrl, setCapturedPosterUrl] = useState<string>();
   const frameSourceUrl = useMemo(() => getFrameSourceUrl(sourceUrl), [sourceUrl]);
@@ -66,6 +67,10 @@ const VideoPoster = ({ sourceUrl, alt, className, posterUrl }: VideoPosterProps)
     return <img src={posterImageUrl} alt={alt} className={className} loading="lazy" decoding="async" />;
   }
 
+  if (!shouldCaptureFrame) {
+    return <div data-testid="video-poster-placeholder" aria-label={alt} className={cn("bg-muted/50", className)} />;
+  }
+
   return (
     <video
       data-testid="video-poster-fallback"
@@ -73,7 +78,7 @@ const VideoPoster = ({ sourceUrl, alt, className, posterUrl }: VideoPosterProps)
       className={cn("pointer-events-none", className)}
       muted
       playsInline
-      preload="auto"
+      preload="metadata"
       onLoadedData={(event) => captureFrame(event.currentTarget)}
     />
   );

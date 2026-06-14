@@ -195,7 +195,7 @@ func (s *APIV1Service) CreateAttachment(ctx context.Context, request *v1pb.Creat
 		return nil, status.Errorf(codes.Internal, "failed to create attachment: %v", err)
 	}
 
-	return convertAttachmentFromStore(attachment), nil
+	return s.convertAttachmentFromStore(ctx, attachment)
 }
 
 func (s *APIV1Service) ListAttachments(ctx context.Context, request *v1pb.ListAttachmentsRequest) (*v1pb.ListAttachmentsResponse, error) {
@@ -246,9 +246,13 @@ func (s *APIV1Service) ListAttachments(ctx context.Context, request *v1pb.ListAt
 	}
 
 	response := &v1pb.ListAttachmentsResponse{}
+	storageSetting, err := s.Store.GetInstanceStorageSetting(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get instance storage setting: %v", err)
+	}
 
 	for _, attachment := range attachments {
-		response.Attachments = append(response.Attachments, convertAttachmentFromStore(attachment))
+		response.Attachments = append(response.Attachments, convertAttachmentFromStoreWithStorageSetting(attachment, storageSetting))
 	}
 
 	// For simplicity, set total size to the number of returned attachments.
@@ -281,7 +285,7 @@ func (s *APIV1Service) GetAttachment(ctx context.Context, request *v1pb.GetAttac
 		return nil, err
 	}
 
-	return convertAttachmentFromStore(attachment), nil
+	return s.convertAttachmentFromStore(ctx, attachment)
 }
 
 func (s *APIV1Service) UpdateAttachment(ctx context.Context, request *v1pb.UpdateAttachmentRequest) (*v1pb.Attachment, error) {
@@ -414,7 +418,15 @@ func (s *APIV1Service) BatchDeleteAttachments(ctx context.Context, request *v1pb
 	return &emptypb.Empty{}, nil
 }
 
-func convertAttachmentFromStore(attachment *store.Attachment) *v1pb.Attachment {
+func (s *APIV1Service) convertAttachmentFromStore(ctx context.Context, attachment *store.Attachment) (*v1pb.Attachment, error) {
+	storageSetting, err := s.Store.GetInstanceStorageSetting(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get instance storage setting: %v", err)
+	}
+	return convertAttachmentFromStoreWithStorageSetting(attachment, storageSetting), nil
+}
+
+func convertAttachmentFromStoreWithStorageSetting(attachment *store.Attachment, storageSetting *storepb.InstanceStorageSetting) *v1pb.Attachment {
 	attachmentMessage := &v1pb.Attachment{
 		Name:        fmt.Sprintf("%s%s", AttachmentNamePrefix, attachment.UID),
 		CreateTime:  timestamppb.New(time.Unix(attachment.CreatedTs, 0)),
@@ -427,11 +439,32 @@ func convertAttachmentFromStore(attachment *store.Attachment) *v1pb.Attachment {
 		memoName := fmt.Sprintf("%s%s", MemoNamePrefix, *attachment.MemoUID)
 		attachmentMessage.Memo = &memoName
 	}
-	if attachment.StorageType == storepb.AttachmentStorageType_EXTERNAL || attachment.StorageType == storepb.AttachmentStorageType_S3 {
+	if attachment.StorageType == storepb.AttachmentStorageType_S3 {
+		attachmentMessage.ExternalLink = buildAttachmentExternalLink(attachment, storageSetting.GetS3Config())
+	} else if attachment.StorageType == storepb.AttachmentStorageType_EXTERNAL {
 		attachmentMessage.ExternalLink = attachment.Reference
 	}
 
 	return attachmentMessage
+}
+
+func buildAttachmentExternalLink(attachment *store.Attachment, fallbackS3Config *storepb.StorageS3Config) string {
+	if attachment == nil || attachment.StorageType != storepb.AttachmentStorageType_S3 || attachment.Payload == nil {
+		if attachment != nil {
+			return attachment.Reference
+		}
+		return ""
+	}
+	s3Object := attachment.Payload.GetS3Object()
+	if s3Object == nil {
+		return attachment.Reference
+	}
+
+	s3Config := s3.OverlayConfig(s3Object.S3Config, fallbackS3Config)
+	if publicURL := s3.PublicObjectURL(s3Config, s3Object.Key); publicURL != "" {
+		return publicURL
+	}
+	return attachment.Reference
 }
 
 // SaveAttachmentBlob saves the blob of attachment based on the storage config.
@@ -481,7 +514,7 @@ func SaveAttachmentBlob(ctx context.Context, profile *profile.Profile, stores *s
 		create.Blob = nil
 		create.StorageType = storepb.AttachmentStorageType_LOCAL
 	} else if instanceStorageSetting.StorageType == storepb.InstanceStorageSetting_S3 {
-		s3Config := instanceStorageSetting.S3Config
+		s3Config := s3.CloneConfig(instanceStorageSetting.S3Config)
 		if s3Config == nil {
 			return errors.Errorf("No activated external storage found")
 		}
@@ -499,12 +532,19 @@ func SaveAttachmentBlob(ctx context.Context, profile *profile.Profile, stores *s
 		if err != nil {
 			return errors.Wrap(err, "Failed to upload via s3 client")
 		}
-		presignURL, err := s3Client.PresignGetObject(ctx, key)
-		if err != nil {
-			return errors.Wrap(err, "Failed to presign via s3 client")
+
+		reference := s3.PublicObjectURL(s3Config, key)
+		var lastPresignedTime *timestamppb.Timestamp
+		if reference == "" {
+			presignURL, err := s3Client.PresignGetObject(ctx, key)
+			if err != nil {
+				return errors.Wrap(err, "Failed to presign via s3 client")
+			}
+			reference = presignURL
+			lastPresignedTime = timestamppb.New(time.Now())
 		}
 
-		create.Reference = presignURL
+		create.Reference = reference
 		create.Blob = nil
 		create.StorageType = storepb.AttachmentStorageType_S3
 		payload := ensureAttachmentPayload(create.Payload)
@@ -512,7 +552,7 @@ func SaveAttachmentBlob(ctx context.Context, profile *profile.Profile, stores *s
 			S3Object: &storepb.AttachmentPayload_S3Object{
 				S3Config:          s3Config,
 				Key:               key,
-				LastPresignedTime: timestamppb.New(time.Now()),
+				LastPresignedTime: lastPresignedTime,
 			},
 		}
 		create.Payload = payload
@@ -552,14 +592,18 @@ func (s *APIV1Service) GetAttachmentBlob(attachment *store.Attachment) ([]byte, 
 		if s3Object == nil {
 			return nil, errors.New("S3 object payload is missing")
 		}
-		if s3Object.S3Config == nil {
+		s3Config := s3Object.S3Config
+		if instanceStorageSetting, err := s.Store.GetInstanceStorageSetting(context.Background()); err == nil {
+			s3Config = s3.OverlayConfig(s3Config, instanceStorageSetting.GetS3Config())
+		}
+		if s3Config == nil {
 			return nil, errors.New("S3 config is missing")
 		}
 		if s3Object.Key == "" {
 			return nil, errors.New("S3 object key is missing")
 		}
 
-		s3Client, err := s3.NewClient(context.Background(), s3Object.S3Config)
+		s3Client, err := s3.NewClient(context.Background(), s3Config)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create S3 client")
 		}

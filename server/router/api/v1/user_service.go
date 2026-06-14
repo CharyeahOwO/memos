@@ -406,14 +406,11 @@ func (s *APIV1Service) DeleteUser(ctx context.Context, request *v1pb.DeleteUserR
 	var attachmentCleanupErr error
 	failedAttachmentIDs := make([]int32, 0)
 	attachmentStorageSetting, attachmentStorageSettingErr := getDeleteUserAttachmentStorageSetting(ctx, s.Store, attachments)
+	if attachmentStorageSettingErr != nil {
+		slog.Warn("failed to get instance storage setting for deleted user attachment cleanup", "user_id", userID, "error", attachmentStorageSettingErr)
+	}
 	for _, attachment := range attachments {
-		var err error
-		if attachmentStorageSettingErr != nil && store.AttachmentNeedsInstanceStorageSetting(attachment) {
-			err = attachmentStorageSettingErr
-		} else {
-			err = s.Store.DeleteAttachmentStorageWithInstanceSetting(ctx, attachment, attachmentStorageSetting)
-		}
-		if err != nil {
+		if err := s.Store.DeleteAttachmentStorageWithInstanceSetting(ctx, attachment, attachmentStorageSetting); err != nil {
 			slog.Warn("failed to delete attachment storage after deleting user", "user_id", userID, "attachment_id", attachment.ID, "error", err)
 			failedAttachmentIDs = append(failedAttachmentIDs, attachment.ID)
 			if attachmentCleanupErr == nil {

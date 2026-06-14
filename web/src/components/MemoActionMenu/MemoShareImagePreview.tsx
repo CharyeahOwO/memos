@@ -1,3 +1,4 @@
+import { PlayIcon } from "lucide-react";
 import { forwardRef, useMemo } from "react";
 import MemoContent from "@/components/MemoContent";
 import UserAvatar from "@/components/UserAvatar";
@@ -54,7 +55,15 @@ const MemoShareImagePreview = forwardRef<HTMLDivElement, { width: number }>(({ w
                   preview.visualItems.length === 3 && index === 0 && "col-span-2 aspect-[2.2/1]",
                 )}
               >
-                <img src={item.posterUrl} alt={item.filename} className="h-full w-full object-cover" loading="eager" decoding="async" />
+                {item.kind === "video" ? (
+                  <div className="flex h-full w-full items-center justify-center bg-muted/55 text-muted-foreground">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-background/85 text-foreground shadow-sm">
+                      <PlayIcon className="h-4 w-4 fill-current" />
+                    </span>
+                  </div>
+                ) : (
+                  <img src={item.posterUrl} alt={item.filename} className="h-full w-full object-cover" loading="eager" decoding="async" />
+                )}
                 {index === 3 && preview.visualItems.length > 4 && (
                   <div className="absolute inset-0 flex items-center justify-center bg-foreground/35 text-lg font-semibold text-background">
                     +{preview.visualItems.length - 4}

@@ -14,6 +14,7 @@ export interface AttachmentItem {
   readonly mimeType: string;
   readonly thumbnailUrl: string;
   readonly sourceUrl: string;
+  readonly motionUrl?: string;
   readonly size?: number;
   readonly isLocal: boolean;
   readonly isVoiceNote: boolean;
@@ -86,6 +87,7 @@ function attachmentGroupToItem(attachment: Attachment): AttachmentItem {
     mimeType: attachment.type,
     thumbnailUrl: attachmentType === "image/*" ? getAttachmentThumbnailUrl(attachment) : sourceUrl,
     sourceUrl,
+    motionUrl: undefined,
     size: Number(attachment.size),
     isLocal: false,
     isVoiceNote: categorizeFile(attachment.type) === "audio" && isAudioRecordingFilename(attachment.filename),
@@ -105,6 +107,7 @@ function visualItemToAttachmentItem(item: ReturnType<typeof buildAttachmentVisua
     mimeType: item.mimeType,
     thumbnailUrl: item.posterUrl,
     sourceUrl: item.sourceUrl,
+    motionUrl: item.previewItem.kind === "motion" ? item.previewItem.motionUrl : undefined,
     size: item.attachments.reduce((total, attachment) => total + Number(attachment.size), 0),
     isLocal: false,
     isVoiceNote: false,
@@ -124,6 +127,7 @@ function fileToItem(file: LocalFile): AttachmentItem {
     mimeType: file.file.type,
     thumbnailUrl: file.previewUrl,
     sourceUrl: file.previewUrl,
+    motionUrl: file.motionMedia ? file.previewUrl : undefined,
     size: file.file.size,
     isLocal: true,
     isVoiceNote:
@@ -168,6 +172,7 @@ function toLocalMotionItems(localFiles: LocalFile[]): AttachmentItem[] {
         mimeType: still.file.type,
         thumbnailUrl: still.previewUrl,
         sourceUrl: video.previewUrl,
+        motionUrl: video.previewUrl,
         size: still.file.size + video.file.size,
         isLocal: true,
         isVoiceNote: false,

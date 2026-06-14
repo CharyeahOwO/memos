@@ -96,10 +96,17 @@ message InstanceStorageSetting {
 message StorageS3Config {
   string access_key_id = 1;
   string access_key_secret = 2;
+  // endpoint is the public S3-compatible endpoint kept for backward compatibility.
   string endpoint = 3;
   string region = 4;
   string bucket = 5;
   bool use_path_style = 6;
+  // internal_endpoint is preferred by the server for upload, read, delete, and derived media generation.
+  string internal_endpoint = 7;
+  // public_url_base is preferred by browsers for stable object URLs.
+  string public_url_base = 8;
+  // cache_control is written to uploaded objects when set.
+  string cache_control = 9;
 }
 
 message InstanceMemoRelatedSetting {

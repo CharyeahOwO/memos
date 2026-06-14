@@ -315,7 +315,13 @@ const AttachmentListEditor: FC<AttachmentListEditorProps> = ({
         }
 
         if (item.category === "motion") {
-          acc.push({ id: item.id, kind: "motion", motionUrl: item.sourceUrl, posterUrl: item.thumbnailUrl, filename: item.filename });
+          acc.push({
+            id: item.id,
+            kind: "motion",
+            motionUrl: item.motionUrl ?? item.sourceUrl,
+            posterUrl: item.thumbnailUrl,
+            filename: item.filename,
+          });
           return acc;
         }
 

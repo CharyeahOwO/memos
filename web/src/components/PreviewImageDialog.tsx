@@ -43,6 +43,10 @@ function PreviewImageDialog({ open, onOpenChange, imgUrls = [], items, initialIn
   const currentItem = previewItems[safeIndex];
   const hasMultiple = itemCount > 1;
   const isImagePreview = currentItem?.kind === "image";
+  const currentVideoPosterUrl =
+    currentItem?.kind === "video" && currentItem.posterUrl && currentItem.posterUrl !== currentItem.sourceUrl
+      ? currentItem.posterUrl
+      : undefined;
   const canGoPrevious = safeIndex > 0;
   const canGoNext = safeIndex < itemCount - 1;
   const zoomPercent = Math.round(zoomScale * 100);
@@ -159,7 +163,7 @@ function PreviewImageDialog({ open, onOpenChange, imgUrls = [], items, initialIn
               <video
                 key={currentItem.id}
                 src={currentItem.sourceUrl}
-                poster={currentItem.posterUrl}
+                poster={currentVideoPosterUrl}
                 className="max-h-[calc(100vh-8rem)] max-w-[calc(100vw-1.5rem)] rounded-md object-contain sm:max-h-[calc(100vh-7rem)] sm:max-w-[calc(100vw-8rem)]"
                 controls
                 autoPlay

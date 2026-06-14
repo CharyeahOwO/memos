@@ -90,12 +90,12 @@ func (r *Runner) CheckAndPresign(ctx context.Context) {
 				}
 			}
 
-			s3Config := instanceStorageSetting.GetS3Config()
-			if s3ObjectPayload.S3Config != nil {
-				s3Config = s3ObjectPayload.S3Config
-			}
+			s3Config := s3.OverlayConfig(s3ObjectPayload.S3Config, instanceStorageSetting.GetS3Config())
 			if s3Config == nil {
 				slog.Error("S3 config is not found")
+				continue
+			}
+			if s3.PublicObjectURL(s3Config, s3ObjectPayload.Key) != "" {
 				continue
 			}
 

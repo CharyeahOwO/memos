@@ -234,8 +234,16 @@ func (s *APIV1Service) ListMemoAttachments(ctx context.Context, request *v1pb.Li
 	response := &v1pb.ListMemoAttachmentsResponse{
 		Attachments: []*v1pb.Attachment{},
 	}
+	if len(attachments) == 0 {
+		return response, nil
+	}
+
+	storageSetting, err := s.Store.GetInstanceStorageSetting(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get instance storage setting: %v", err)
+	}
 	for _, attachment := range attachments {
-		response.Attachments = append(response.Attachments, convertAttachmentFromStore(attachment))
+		response.Attachments = append(response.Attachments, convertAttachmentFromStoreWithStorageSetting(attachment, storageSetting))
 	}
 	return response, nil
 }

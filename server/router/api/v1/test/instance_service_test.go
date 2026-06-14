@@ -687,11 +687,14 @@ func TestUpdateInstanceSetting(t *testing.T) {
 				Value: &v1pb.InstanceSetting_StorageSetting_{
 					StorageSetting: &v1pb.InstanceSetting_StorageSetting{
 						S3Config: &v1pb.InstanceSetting_StorageSetting_S3Config{
-							AccessKeyId:     "AKID",
-							AccessKeySecret: "super-secret",
-							Endpoint:        "s3.example.com",
-							Region:          "us-east-1",
-							Bucket:          "memos",
+							AccessKeyId:      "AKID",
+							AccessKeySecret:  "super-secret",
+							Endpoint:         "s3.example.com",
+							Region:           "us-east-1",
+							Bucket:           "memos",
+							InternalEndpoint: "https://s3-internal.example.com",
+							PublicUrlBase:    "https://media.example.com",
+							CacheControl:     "public, max-age=31536000, immutable",
 						},
 					},
 				},
@@ -706,6 +709,9 @@ func TestUpdateInstanceSetting(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, resp.GetStorageSetting().GetS3Config().GetAccessKeySecret(),
 			"AccessKeySecret must never be returned in responses")
+		require.Equal(t, "https://s3-internal.example.com", resp.GetStorageSetting().GetS3Config().GetInternalEndpoint())
+		require.Equal(t, "https://media.example.com", resp.GetStorageSetting().GetS3Config().GetPublicUrlBase())
+		require.Equal(t, "public, max-age=31536000, immutable", resp.GetStorageSetting().GetS3Config().GetCacheControl())
 
 		// Update with empty secret; original must be preserved in the store.
 		_, err = ts.Service.UpdateInstanceSetting(adminCtx, &v1pb.UpdateInstanceSettingRequest{
@@ -714,11 +720,14 @@ func TestUpdateInstanceSetting(t *testing.T) {
 				Value: &v1pb.InstanceSetting_StorageSetting_{
 					StorageSetting: &v1pb.InstanceSetting_StorageSetting{
 						S3Config: &v1pb.InstanceSetting_StorageSetting_S3Config{
-							AccessKeyId:     "AKID",
-							AccessKeySecret: "", // omitted / not changed
-							Endpoint:        "s3-v2.example.com",
-							Region:          "us-east-1",
-							Bucket:          "memos",
+							AccessKeyId:      " AKID ",
+							AccessKeySecret:  "", // omitted / not changed
+							Endpoint:         " s3-v2.example.com ",
+							Region:           " us-east-1 ",
+							Bucket:           " memos ",
+							InternalEndpoint: " https://s3-internal-v2.example.com ",
+							PublicUrlBase:    " https://media-v2.example.com ",
+							CacheControl:     " public, max-age=60 ",
 						},
 					},
 				},
@@ -730,7 +739,13 @@ func TestUpdateInstanceSetting(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "super-secret", stored.GetS3Config().GetAccessKeySecret(),
 			"existing AccessKeySecret must be preserved when an empty value is sent")
+		require.Equal(t, "AKID", stored.GetS3Config().GetAccessKeyId())
 		require.Equal(t, "s3-v2.example.com", stored.GetS3Config().GetEndpoint())
+		require.Equal(t, "us-east-1", stored.GetS3Config().GetRegion())
+		require.Equal(t, "memos", stored.GetS3Config().GetBucket())
+		require.Equal(t, "https://s3-internal-v2.example.com", stored.GetS3Config().GetInternalEndpoint())
+		require.Equal(t, "https://media-v2.example.com", stored.GetS3Config().GetPublicUrlBase())
+		require.Equal(t, "public, max-age=60", stored.GetS3Config().GetCacheControl())
 	})
 
 	t.Run("UpdateInstanceSetting - AI provider keys are write-only and preserved on empty", func(t *testing.T) {

@@ -3,11 +3,18 @@ import { describe, expect, it, vi } from "vitest";
 import VideoPoster from "@/components/VideoPoster";
 
 describe("<VideoPoster>", () => {
-  it("renders a mobile-friendly video fallback before a frame is captured", () => {
+  it("renders a lightweight placeholder without loading the video by default", () => {
     render(<VideoPoster sourceUrl="/file/attachments/video/video.mp4" alt="clip.mp4" className="object-cover" />);
 
+    expect(screen.getByTestId("video-poster-placeholder")).toHaveAttribute("aria-label", "clip.mp4");
+    expect(screen.queryByTestId("video-poster-fallback")).not.toBeInTheDocument();
+  });
+
+  it("renders a mobile-friendly video fallback when frame capture is enabled", () => {
+    render(<VideoPoster sourceUrl="/file/attachments/video/video.mp4" alt="clip.mp4" className="object-cover" captureFrame />);
+
     const video = screen.getByTestId("video-poster-fallback");
-    expect(video).toHaveAttribute("preload", "auto");
+    expect(video).toHaveAttribute("preload", "metadata");
     expect(video).toHaveAttribute("playsinline");
     expect((video as HTMLVideoElement).muted).toBe(true);
     expect(video).toHaveClass("object-cover");
@@ -31,7 +38,7 @@ describe("<VideoPoster>", () => {
       return originalCreateElement(tagName, options);
     });
 
-    render(<VideoPoster sourceUrl="/file/attachments/video/video.mp4" alt="clip.mp4" className="object-cover" />);
+    render(<VideoPoster sourceUrl="/file/attachments/video/video.mp4" alt="clip.mp4" className="object-cover" captureFrame />);
 
     const video = screen.getByTestId("video-poster-fallback") as HTMLVideoElement;
     Object.defineProperty(video, "videoWidth", { configurable: true, value: 640 });

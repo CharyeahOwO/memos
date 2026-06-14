@@ -45,6 +45,7 @@ func TestAttachmentNeedsInstanceStorageSetting(t *testing.T) {
 					},
 				},
 			},
+			want: true,
 		},
 		{
 			name: "s3 attachment without embedded config",

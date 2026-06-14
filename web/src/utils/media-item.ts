@@ -160,19 +160,23 @@ function buildAppleMotionItem(still: Attachment, video: Attachment): AttachmentV
 }
 
 function buildAndroidMotionItem(attachment: Attachment): AttachmentVisualItem {
+  const sourceUrl = getAttachmentUrl(attachment);
+  const motionUrl = getAttachmentMotionClipUrl(attachment);
+  const posterUrl = getAttachmentThumbnailUrl(attachment);
+
   return {
     id: attachment.name,
     kind: "motion",
     filename: attachment.filename,
-    posterUrl: getAttachmentThumbnailUrl(attachment),
-    sourceUrl: getAttachmentMotionClipUrl(attachment),
+    posterUrl,
+    sourceUrl,
     attachmentNames: [attachment.name],
     attachments: [attachment],
     previewItem: {
       id: attachment.name,
       kind: "motion",
-      motionUrl: getAttachmentMotionClipUrl(attachment),
-      posterUrl: getAttachmentThumbnailUrl(attachment),
+      motionUrl,
+      posterUrl,
       filename: attachment.filename,
       presentationTimestampUs: attachment.motionMedia?.presentationTimestampUs,
     },

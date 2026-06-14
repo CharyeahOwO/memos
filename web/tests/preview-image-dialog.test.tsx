@@ -100,6 +100,18 @@ describe("<PreviewImageDialog>", () => {
     expect(screen.queryByRole("button", { name: /reset zoom/i })).not.toBeInTheDocument();
   });
 
+  it("does not reuse the original video URL as its poster", () => {
+    render(
+      <PreviewImageDialog
+        open
+        onOpenChange={vi.fn()}
+        items={[{ id: "video-1", kind: "video", sourceUrl: "/video.mp4", posterUrl: "/video.mp4", filename: "video.mp4" }]}
+      />,
+    );
+
+    expect(document.querySelector("video")).not.toHaveAttribute("poster");
+  });
+
   it("keeps previous and next controls available for mobile image galleries", () => {
     render(
       <PreviewImageDialog

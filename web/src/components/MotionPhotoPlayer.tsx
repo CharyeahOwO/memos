@@ -28,6 +28,7 @@ const MotionPhotoPlayer = ({
 }: MotionPhotoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [shouldLoadMotion, setShouldLoadMotion] = useState(false);
 
   const resetPlaybackPosition = useCallback(
     (video: HTMLVideoElement) => {
@@ -83,8 +84,16 @@ const MotionPhotoPlayer = ({
       return;
     }
 
-    void startPlayback(loop);
-  }, [active, loop, startPlayback, stopPlayback]);
+    setShouldLoadMotion(true);
+    if (shouldLoadMotion) {
+      void startPlayback(loop);
+    }
+  }, [active, loop, shouldLoadMotion, startPlayback, stopPlayback]);
+
+  useEffect(() => {
+    setShouldLoadMotion(false);
+    setIsPlaying(false);
+  }, [motionUrl]);
 
   return (
     <div className={cn("relative overflow-hidden", containerClassName)}>
@@ -98,7 +107,7 @@ const MotionPhotoPlayer = ({
       />
       <video
         ref={videoRef}
-        src={motionUrl}
+        src={shouldLoadMotion ? motionUrl : undefined}
         poster={posterUrl}
         className={cn(
           "pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200",

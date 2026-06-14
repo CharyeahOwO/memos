@@ -146,6 +146,9 @@ const StorageSection = () => {
           region: existing?.region ?? "",
           bucket: existing?.bucket ?? "",
           usePathStyle: existing?.usePathStyle ?? false,
+          internalEndpoint: existing?.internalEndpoint ?? "",
+          publicUrlBase: existing?.publicUrlBase ?? "",
+          cacheControl: existing?.cacheControl ?? "",
           [field]: value,
         }),
       }),
@@ -307,6 +310,33 @@ const StorageSection = () => {
               className="w-64"
               value={instanceStorageSetting.s3Config?.endpoint ?? ""}
               onChange={(e) => handleS3FieldChange("endpoint", e.target.value)}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("setting.storage.internal-endpoint")} description={t("setting.storage.internal-endpoint-description")}>
+            <Input
+              className="w-64"
+              value={instanceStorageSetting.s3Config?.internalEndpoint ?? ""}
+              placeholder="https://oss-cn-hangzhou-internal.aliyuncs.com"
+              onChange={(e) => handleS3FieldChange("internalEndpoint", e.target.value)}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("setting.storage.public-url-base")} description={t("setting.storage.public-url-base-description")}>
+            <Input
+              className="w-64"
+              value={instanceStorageSetting.s3Config?.publicUrlBase ?? ""}
+              placeholder="https://memos-media.example.com"
+              onChange={(e) => handleS3FieldChange("publicUrlBase", e.target.value)}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("setting.storage.cache-control")} description={t("setting.storage.cache-control-description")}>
+            <Input
+              className="w-64"
+              value={instanceStorageSetting.s3Config?.cacheControl ?? ""}
+              placeholder="public, max-age=31536000, immutable"
+              onChange={(e) => handleS3FieldChange("cacheControl", e.target.value)}
             />
           </SettingRow>
 
